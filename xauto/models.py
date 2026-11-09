@@ -99,6 +99,7 @@ class Post:
     status: PostStatus = PostStatus.DRAFT
     telegram: TelegramStatus = TelegramStatus.PENDING
     tweet_url: str = ""
+    scheduled_id: str = ""          # id of the entry in X's scheduler, once scheduled
     error: str = ""
     id: str = field(default_factory=new_id)
 
@@ -112,6 +113,7 @@ class Post:
             "status": self.status.value,
             "telegram": self.telegram.value,
             "tweet_url": self.tweet_url,
+            "scheduled_id": self.scheduled_id,
             "error": self.error,
         }
 
@@ -130,5 +132,6 @@ class Post:
             status=PostStatus(raw.get("status", PostStatus.DRAFT.value)),
             telegram=TelegramStatus(raw.get("telegram", TelegramStatus.PENDING.value)),
             tweet_url=raw.get("tweet_url", ""),
+            scheduled_id=raw.get("scheduled_id", ""),
             error=raw.get("error", ""),
         )
