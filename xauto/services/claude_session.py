@@ -9,12 +9,12 @@ Stopping kills the whole process tree (cmd.exe -> claude -> its children).
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
 # Console helpers (tasklist, taskkill) must not flash a window when we run under pythonw.
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-NEW_CONSOLE = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
 
 
 class SessionError(RuntimeError):
@@ -88,12 +88,28 @@ class ClaudeSession:
             raise SessionError(f"launcher not found: {self.launcher}")
         if self.is_running():
             return False
-        process = subprocess.Popen(
-            ["cmd.exe", "/c", str(self.launcher)],
-            cwd=self.launcher.parent, creationflags=NEW_CONSOLE,
-        )
-        self._remember(process.pid)
+        self._remember(self._open_console())
         return True
+
+    def _open_console(self) -> int:
+        """Open the launcher in a fresh console window and return its cmd.exe PID.
+
+        Popen(CREATE_NEW_CONSOLE) is not enough: when *our* stdin/stdout are
+        pipes (started from another program), the new console inherits them and
+        the interactive Claude UI ignores the keyboard. Start-Process goes
+        through the shell, so the window always gets its own console handles.
+        """
+        script = ("(Start-Process -FilePath cmd.exe -ArgumentList '/c', ('\"' + $env:XA_BAT + '\"') "
+                  "-WorkingDirectory $env:XA_DIR -PassThru).Id")
+        env = {**os.environ, "XA_BAT": str(self.launcher), "XA_DIR": str(self.launcher.parent)}
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+            capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL, creationflags=NO_WINDOW,
+        )
+        try:
+            return int(result.stdout.strip())
+        except ValueError as exc:
+            raise SessionError(f"could not open the terminal: {result.stderr.strip() or result.stdout.strip()}") from exc
 
     def stop(self) -> bool:
         """Close the terminal and everything started in it. Returns False if it wasn't running."""
