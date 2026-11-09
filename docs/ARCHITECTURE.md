@@ -2,7 +2,7 @@
 
 ```
 main.py                  entry point
-postdeck/
+xauto/
 ├── app.py               window setup, root layout
 ├── config.py            paths + Settings (config/settings.json)
 ├── models.py            Account, Post and their enums
@@ -18,6 +18,9 @@ postdeck/
     ├── dialogs.py       add / edit / delete dialogs
     ├── formatting.py    date helpers
     └── home.py          home screen
+scripts/
+├── build_icon.py        renders assets/icon.png + icon.ico with Pillow
+└── check_secrets.py     pre-commit / CI scan for private data
 ```
 
 ## Principles
@@ -29,6 +32,6 @@ postdeck/
   proxies, keys and e-mails from ever reaching the repository.
 - **Slow work runs in background threads** (AdsPower calls, avatar downloads),
   so the window never freezes.
-- **The browser fingerprint is AdsPower's job.** Postdeck only asks AdsPower
+- **The browser fingerprint is AdsPower's job.** Xauto only asks AdsPower
   to open a profile and then opens a tab through that browser's own DevTools
   port, so every account keeps its own fingerprint and proxy.

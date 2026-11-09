@@ -129,7 +129,7 @@ class HomeView(ft.Container):
                 ),
                 ft.Column(
                     [
-                        ft.Text("Postdeck", size=26, weight=ft.FontWeight.W_700, color=theme.TEXT),
+                        ft.Text("Xauto", size=26, weight=ft.FontWeight.W_700, color=theme.TEXT),
                         ft.Text(t("app.subtitle"), size=13, color=theme.TEXT_MUTED),
                     ],
                     spacing=0,

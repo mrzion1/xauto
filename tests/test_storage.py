@@ -3,8 +3,8 @@
 import json
 from datetime import datetime, timedelta
 
-from postdeck.models import Account, Post, PostStatus
-from postdeck.storage import AccountRepository, QueueRepository
+from xauto.models import Account, Post, PostStatus
+from xauto.storage import AccountRepository, QueueRepository
 
 
 def _now():

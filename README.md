@@ -1,6 +1,8 @@
 <div align="center">
 
-# Postdeck
+<img src="assets/icon.png" alt="Xauto icon" width="96">
+
+# Xauto
 
 **A local desktop dashboard for planning X (Twitter) posts across several accounts, built on top of AdsPower browser profiles.**
 
@@ -9,7 +11,7 @@
 ![Platform](https://img.shields.io/badge/platform-Windows-111)
 ![License](https://img.shields.io/badge/license-MIT-111)
 
-<img src="docs/img/home.png" alt="Postdeck home screen" width="860">
+<img src="docs/img/home.png" alt="Xauto home screen" width="860">
 
 </div>
 
@@ -19,7 +21,7 @@
 
 Running a few X accounts usually means a separate anti-detect browser profile
 per account, a pile of drafts somewhere, and no quick way to see which account
-is about to run out of planned posts. Postdeck keeps all of that on one screen:
+is about to run out of planned posts. Xauto keeps all of that on one screen:
 
 - every account as a card with its avatar, name and `@handle`;
 - **one click opens the account** in its own AdsPower profile, straight on the
@@ -49,14 +51,14 @@ Everything runs locally. No accounts, cookies or proxies leave your machine.
 - Windows 10 / 11
 - Python **3.11+** on `PATH`
 - [AdsPower](https://www.adspower.com/) with the **Local API** enabled
-  (*AdsPower → Automation → API*). The free plan is enough: Postdeck only
+  (*AdsPower → Automation → API*). The free plan is enough: Xauto only
   starts profiles, it does not list them.
 
 ## Quick start
 
 ```bash
-git clone https://github.com/mrzion1/postdeck.git
-cd postdeck
+git clone https://github.com/mrzion1/xauto.git
+cd xauto
 start.bat
 ```
 
@@ -122,6 +124,7 @@ git config core.hooksPath .githooks
 
 python -m pytest           # unit tests
 python main.py             # run the app
+python scripts/build_icon.py  # regenerate assets/icon.png and icon.ico
 ```
 
 Project layout and design decisions: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

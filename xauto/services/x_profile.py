@@ -14,7 +14,7 @@ import requests
 
 from ..config import AVATARS_DIR
 
-_HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) postdeck"}
+_HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) xauto"}
 _TIMEOUT_S = 15
 
 

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from postdeck.models import Account, Post, PostStatus, TelegramStatus, normalize_handle
+from xauto.models import Account, Post, PostStatus, TelegramStatus, normalize_handle
 
 
 @pytest.mark.parametrize(

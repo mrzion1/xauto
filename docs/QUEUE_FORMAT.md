@@ -1,6 +1,6 @@
 # Queue format (`data/queue.json`)
 
-The queue is a single JSON file. Postdeck watches it and re-renders as soon as
+The queue is a single JSON file. Xauto watches it and re-renders as soon as
 it changes, so it can be filled by hand, by a script or by an AI assistant
 while the app is open.
 
