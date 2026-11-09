@@ -9,7 +9,7 @@ import flet as ft
 
 from ..config import post_dir
 from ..i18n import t
-from ..models import Account, Post, PostStatus
+from ..models import Account, Post, PostStatus, TelegramStatus
 from ..services.media import is_video, open_in_system, thumbnail_for, video_duration
 from . import theme
 from .common import account_avatar, show_toast
@@ -153,6 +153,11 @@ class PreviewDialog(ft.AlertDialog):
                 color=theme.WARN if long_post else theme.TEXT_MUTED,
             ),
         ]
+        if self.post.tweet_url:
+            items.append(ft.TextButton(t("preview.open_on_x"), icon=ft.Icons.OPEN_IN_NEW_ROUNDED,
+                                       url=self.post.tweet_url, style=ft.ButtonStyle(color=theme.OK)))
+        if self.post.telegram is not TelegramStatus.OFF and self.post.status in (PostStatus.SCHEDULED, PostStatus.PUBLISHED):
+            items.append(ft.Text(t(f"preview.tg.{self.post.telegram.value}"), size=13, color=theme.TEXT_MUTED))
         if self.post.error:
             items.append(ft.Text(self.post.error, size=13, color=theme.DANGER))
         return ft.Row(items, spacing=14, wrap=True, vertical_alignment=ft.CrossAxisAlignment.CENTER)
