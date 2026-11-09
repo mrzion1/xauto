@@ -6,6 +6,7 @@ xauto/
 ├── __main__.py          `python -m xauto <command>` (CLI)
 ├── cli.py               add-post / list / move / shift / schedule / set-status / remove
 ├── scheduling.py        use case: approved posts -> X scheduler, saves every outcome
+├── notify.py            use case: live post -> link -> your Telegram bot
 ├── app.py               window setup
 ├── config.py            paths + Settings (config/settings.json)
 ├── models.py            Account, Post and their enums
@@ -15,6 +16,8 @@ xauto/
 │   ├── adspower.py      AdsPower Local API + Chrome DevTools tab opening
 │   ├── media.py         attachment types, ffmpeg thumbnails, durations
 │   ├── x_scheduler.py   Playwright over CDP: compose, upload, schedule + request guard
+│   ├── x_timeline.py    finds a published post's URL on the profile page
+│   ├── telegram_bot.py  Bot API: send message, discover your chat id
 │   └── x_profile.py     public profile lookup (name, avatar)
 └── ui/
     ├── shell.py         root Stack + navigation between screens

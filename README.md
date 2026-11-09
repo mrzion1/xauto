@@ -46,7 +46,7 @@ Everything runs locally. No accounts, cookies or proxies leave your machine.
 | ✅ | Preview that looks like the real post on X (text, images, video with duration), approve / unapprove |
 | ✅ | CLI to add posts safely: `python -m xauto add-post ...` |
 | ✅ | Push approved posts into X's native scheduler through AdsPower, with a request guard that checks time, text and media before X accepts anything |
-| 🚧 | Share published posts to Telegram chats |
+| ✅ | Telegram bot message with the link as soon as a scheduled post goes live |
 
 ## Requirements
 
@@ -126,6 +126,24 @@ failed with a screenshot in its folder.
 
 Requires Playwright (`pip install -r requirements.txt`); no separate browser
 download is needed because it attaches to AdsPower's browser.
+
+## Telegram: get the link when a post goes live
+
+1. Create a bot with [@BotFather](https://t.me/BotFather) and copy its token.
+2. Open your bot, press **Start**, then connect it (the token is stored in the
+   git-ignored `config/settings.json`):
+   ```bash
+   python -m xauto telegram-setup --token <your bot token>
+   ```
+3. Let Windows check every 10 minutes (no console window pops up):
+   ```bash
+   python -m xauto install-task          # remove with: python -m xauto uninstall-task
+   ```
+
+After a scheduled post's time passes, `notify` reads the account's profile
+inside its AdsPower profile (started headless and closed again if it was not
+open), finds the post by its text and sends you the link. If the PC was off,
+the link arrives on the next run, marked as late. Log: `data/notify.log`.
 
 ## Privacy
 
