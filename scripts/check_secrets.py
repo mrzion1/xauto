@@ -66,14 +66,20 @@ def _files(scan_all: bool) -> list[str]:
 
 
 def _content(path: str, scan_all: bool) -> str:
+    """Text of the file, or '' for binary / unreadable files."""
     try:
         if scan_all:
-            with open(path, encoding="utf-8") as fh:
-                return fh.read()
-        # Pre-commit must look at the *staged* version, not the working copy.
-        return _git("show", f":{path}")
-    except (OSError, UnicodeDecodeError, subprocess.CalledProcessError):
-        return ""  # binary or unreadable files are skipped
+            with open(path, "rb") as fh:
+                raw = fh.read()
+        else:
+            # Pre-commit must look at the *staged* version, not the working copy.
+            raw = subprocess.run(["git", "show", f":{path}"], check=True, capture_output=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return ""
+
+    if b"\x00" in raw[:8000]:
+        return ""  # binary (images etc.)
+    return raw.decode("utf-8", errors="replace")
 
 
 def _is_allowed(value: str) -> bool:
