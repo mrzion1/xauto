@@ -8,6 +8,7 @@ so the repository itself never carries private information.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
@@ -17,7 +18,8 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent.parent
 ASSETS_DIR = ROOT_DIR / "assets"
 CONFIG_DIR = ROOT_DIR / "config"
-DATA_DIR = ROOT_DIR / "data"
+# XAUTO_DATA_DIR lets tests and demo screenshots run against a throwaway folder.
+DATA_DIR = Path(os.environ.get("XAUTO_DATA_DIR") or ROOT_DIR / "data")
 
 SETTINGS_FILE = CONFIG_DIR / "settings.json"
 SETTINGS_EXAMPLE_FILE = CONFIG_DIR / "settings.example.json"
@@ -25,12 +27,17 @@ SETTINGS_EXAMPLE_FILE = CONFIG_DIR / "settings.example.json"
 ACCOUNTS_FILE = DATA_DIR / "accounts.json"
 QUEUE_FILE = DATA_DIR / "queue.json"
 AVATARS_DIR = DATA_DIR / "avatars"
-MEDIA_DIR = DATA_DIR / "media"
+POSTS_DIR = DATA_DIR / "posts"          # one sub-folder per post: media, notes, thumbnails
+
+
+def post_dir(post_id: str) -> Path:
+    """Folder that holds the media and notes of a single post."""
+    return POSTS_DIR / post_id
 
 
 def ensure_dirs() -> None:
     """Create the private runtime folders on first launch."""
-    for folder in (DATA_DIR, AVATARS_DIR, MEDIA_DIR):
+    for folder in (DATA_DIR, AVATARS_DIR, POSTS_DIR):
         folder.mkdir(parents=True, exist_ok=True)
 
 

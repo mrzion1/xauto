@@ -95,7 +95,7 @@ class Post:
     account: str                    # account handle, without '@'
     scheduled_at: datetime          # timezone-aware
     text: str
-    media: list[str] = field(default_factory=list)   # file names inside data/media/
+    media: list[str] = field(default_factory=list)   # file names inside data/posts/<id>/
     status: PostStatus = PostStatus.DRAFT
     telegram: TelegramStatus = TelegramStatus.PENDING
     tweet_url: str = ""

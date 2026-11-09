@@ -101,6 +101,21 @@ class QueueRepository:
         payload = {"schema_version": SCHEMA_VERSION, "posts": [p.to_dict() for p in ordered]}
         _write_json_atomic(self.path, payload)
 
+    def get(self, post_id: str) -> Post | None:
+        return next((p for p in self.load() if p.id == post_id), None)
+
+    def for_account(self, handle: str) -> list[Post]:
+        handle = normalize_handle(handle)
+        return [p for p in self.load() if p.account == handle]
+
+    def upsert(self, post: Post) -> None:
+        posts = [p for p in self.load() if p.id != post.id]
+        posts.append(post)
+        self.save(posts)
+
+    def delete(self, post_id: str) -> None:
+        self.save([p for p in self.load() if p.id != post_id])
+
     def summary_for(self, handle: str, posts: list[Post] | None = None) -> QueueSummary:
         handle = normalize_handle(handle)
         posts = self.load() if posts is None else posts
