@@ -6,6 +6,7 @@
     python -m xauto set-status <post_id> approved
     python -m xauto move <post_id> --at "2026-11-10 20:05"
     python -m xauto shift --account workmadz --days -1
+    python -m xauto schedule --account workmadz [--dry-run] [--post <id>]
     python -m xauto remove <post_id>
 
 Every command goes through the same repositories as the UI, so the queue file
@@ -157,6 +158,33 @@ def cmd_shift(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_schedule(args: argparse.Namespace) -> int:
+    # Imported here so the light commands don't need Playwright installed.
+    from .config import Settings
+    from .scheduling import pending_posts, schedule_account
+
+    handle = normalize_handle(args.account)
+    account = next((a for a in AccountRepository().load() if a.handle == handle), None)
+    if account is None:
+        raise CliError(f"unknown account @{handle}")
+
+    wanted = set(args.post) if args.post else None
+    todo = pending_posts(handle, post_ids=wanted)
+    if not todo:
+        print("nothing to schedule (needs approved posts in the future)")
+        return 0
+    mode = "DRY RUN, nothing will be created on X" if args.dry_run else "LIVE"
+    print(f"{mode}: {len(todo)} post(s) for @{handle}")
+
+    def report(result) -> None:
+        mark = "ok  " if result.ok else "FAIL"
+        extra = f"  screenshot: {result.screenshot}" if result.screenshot else ""
+        print(f"  {mark} {result.post_id}  {result.message}{extra}", flush=True)
+
+    results = schedule_account(account, Settings.load(), dry_run=args.dry_run, post_ids=wanted, on_result=report)
+    return 0 if all(r.ok for r in results) else 1
+
+
 def cmd_remove(args: argparse.Namespace) -> int:
     repo = QueueRepository()
     if repo.get(args.post_id) is None:
@@ -204,6 +232,13 @@ def build_parser() -> argparse.ArgumentParser:
     shift.add_argument("--days", type=int, default=0, help="negative = earlier")
     shift.add_argument("--minutes", type=int, default=0)
     shift.set_defaults(handler=cmd_shift)
+
+    schedule = sub.add_parser("schedule", help="put approved posts into X's scheduler via AdsPower")
+    schedule.add_argument("--account", required=True)
+    schedule.add_argument("--post", action="append", help="only these post ids (repeatable)")
+    schedule.add_argument("--dry-run", action="store_true",
+                          help="do everything but abort X's final request (nothing is created)")
+    schedule.set_defaults(handler=cmd_schedule)
 
     remove = sub.add_parser("remove", help="delete a post and its folder")
     remove.add_argument("post_id")
