@@ -16,7 +16,9 @@ stays valid and the running app picks changes up automatically.
 from __future__ import annotations
 
 import argparse
+import logging
 import shutil
+import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -185,6 +187,76 @@ def cmd_schedule(args: argparse.Namespace) -> int:
     return 0 if all(r.ok for r in results) else 1
 
 
+def cmd_notify(args: argparse.Namespace) -> int:
+    from .config import DATA_DIR, Settings
+    from .notify import run_notify
+
+    # The scheduled task has no console, so everything also goes to data/notify.log.
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        handlers=[logging.FileHandler(DATA_DIR / "notify.log", encoding="utf-8")]
+        + ([logging.StreamHandler()] if sys.stderr else []),  # pythonw has no stderr
+    )
+    try:
+        report = run_notify(Settings.load())
+    except Exception:
+        logging.exception("notify failed")
+        return 1
+    if report.sent or report.waiting or report.gave_up:
+        logging.info("sent=%d waiting=%d gave_up=%d", report.sent, report.waiting, report.gave_up)
+    return 0
+
+
+def cmd_telegram_setup(args: argparse.Namespace) -> int:
+    from .config import Settings
+    from .services.telegram_bot import TelegramBot, TelegramError
+
+    settings = Settings.load()
+    if args.token:
+        settings.telegram_bot_token = args.token.strip()
+    try:
+        bot = TelegramBot(settings.telegram_bot_token)
+        name = bot.bot_username()
+        chat_id = bot.latest_private_chat_id()
+        if chat_id is None:
+            raise CliError(f"open t.me/{name}, press Start (or send any message), then run this again")
+        bot.send(chat_id, "Xauto подключен. Сюда будут приходить ссылки на вышедшие посты.")
+    except TelegramError as exc:
+        raise CliError(f"telegram: {exc}") from exc
+
+    settings.telegram_chat_id = str(chat_id)
+    settings.save()
+    print(f"connected to @{name}, test message sent, settings saved")
+    return 0
+
+
+TASK_NAME = "Xauto notify"
+
+
+def cmd_install_task(args: argparse.Namespace) -> int:
+    """Register a Windows scheduled task that runs `notify` every N minutes, without a console window."""
+    from .config import ROOT_DIR
+
+    pythonw = Path(sys.executable).with_name("pythonw.exe")
+    runner = ROOT_DIR / "scripts" / "notify_task.pyw"
+    action = f'"{pythonw}" "{runner}"'
+    result = subprocess.run(
+        ["schtasks", "/Create", "/F", "/SC", "MINUTE", "/MO", str(args.every), "/TN", TASK_NAME, "/TR", action],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        raise CliError(f"schtasks failed: {result.stderr.strip() or result.stdout.strip()}")
+    print(f"task '{TASK_NAME}' installed: every {args.every} min -> {action}")
+    return 0
+
+
+def cmd_uninstall_task(args: argparse.Namespace) -> int:
+    result = subprocess.run(["schtasks", "/Delete", "/F", "/TN", TASK_NAME], capture_output=True, text=True)
+    print(result.stdout.strip() or result.stderr.strip())
+    return 0
+
+
 def cmd_remove(args: argparse.Namespace) -> int:
     repo = QueueRepository()
     if repo.get(args.post_id) is None:
@@ -239,6 +311,20 @@ def build_parser() -> argparse.ArgumentParser:
     schedule.add_argument("--dry-run", action="store_true",
                           help="do everything but abort X's final request (nothing is created)")
     schedule.set_defaults(handler=cmd_schedule)
+
+    notify = sub.add_parser("notify", help="send links of posts that went live to your Telegram bot")
+    notify.set_defaults(handler=cmd_notify)
+
+    tg = sub.add_parser("telegram-setup", help="connect your Telegram bot (token from @BotFather)")
+    tg.add_argument("--token", help="bot token; saved to config/settings.json (git-ignored)")
+    tg.set_defaults(handler=cmd_telegram_setup)
+
+    task = sub.add_parser("install-task", help="run `notify` automatically via Windows Task Scheduler")
+    task.add_argument("--every", type=int, default=10, help="minutes between runs (default 10)")
+    task.set_defaults(handler=cmd_install_task)
+
+    untask = sub.add_parser("uninstall-task", help="remove the scheduled task")
+    untask.set_defaults(handler=cmd_uninstall_task)
 
     remove = sub.add_parser("remove", help="delete a post and its folder")
     remove.add_argument("post_id")
