@@ -57,3 +57,27 @@ def test_media_rejected(tmp_path, names):
 def test_media_missing_file(tmp_path):
     with pytest.raises(CliError):
         validate_media([tmp_path / "nope.mp4"])
+
+
+def test_shift_moves_only_editable_posts(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+
+    from xauto import cli
+    from xauto.models import Post, PostStatus
+    from xauto.storage import QueueRepository
+
+    repo = QueueRepository(tmp_path / "queue.json")
+    monkeypatch.setattr(cli, "QueueRepository", lambda: repo)
+    when = datetime(2026, 11, 10, 19, 52, tzinfo=timezone(timedelta(hours=3)))
+    repo.save([
+        Post(id="draft", account="demo", scheduled_at=when, text="a"),
+        Post(id="sched", account="demo", scheduled_at=when, text="b", status=PostStatus.SCHEDULED),
+        Post(id="other", account="someone", scheduled_at=when, text="c"),
+    ])
+
+    assert cli.main(["shift", "--account", "@demo", "--days", "-1"]) == 0
+
+    by_id = {p.id: p.scheduled_at for p in repo.load()}
+    assert by_id["draft"] == when - timedelta(days=1)
+    assert by_id["sched"] == when          # already in X's scheduler, untouched
+    assert by_id["other"] == when          # another account, untouched

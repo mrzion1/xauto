@@ -37,6 +37,8 @@ queue atomically:
 python -m xauto add-post --account your_handle --at "2026-11-10 19:45"     --text-file post.txt --media clip.mp4 --notes notes.txt
 python -m xauto list --account your_handle
 python -m xauto set-status <post_id> approved
+python -m xauto move <post_id> --at "2026-11-10 20:05"
+python -m xauto shift --account your_handle --days -1   # draft/approved only
 python -m xauto remove <post_id>
 ```
 

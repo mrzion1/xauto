@@ -4,6 +4,8 @@
         --text-file post.txt --media clip.mp4 --notes notes.txt
     python -m xauto list [--account workmadz]
     python -m xauto set-status <post_id> approved
+    python -m xauto move <post_id> --at "2026-11-10 20:05"
+    python -m xauto shift --account workmadz --days -1
     python -m xauto remove <post_id>
 
 Every command goes through the same repositories as the UI, so the queue file
@@ -125,6 +127,36 @@ def cmd_set_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_move(args: argparse.Namespace) -> int:
+    repo = QueueRepository()
+    post = repo.get(args.post_id)
+    if post is None:
+        raise CliError(f"no post with id {args.post_id}")
+    post.scheduled_at = parse_when(args.at, args.tz)
+    repo.upsert(post)
+    print(f"{post.id} -> {post.scheduled_at.isoformat(timespec='minutes')}")
+    return 0
+
+
+# Posts already handed to X can't be moved from here: X owns their time now.
+MOVABLE = {PostStatus.DRAFT, PostStatus.APPROVED}
+
+
+def cmd_shift(args: argparse.Namespace) -> int:
+    handle = normalize_handle(args.account)
+    delta = timedelta(days=args.days, minutes=args.minutes)
+    repo = QueueRepository()
+    posts = repo.load()
+    moved = [p for p in posts if p.account == handle and p.status in MOVABLE]
+    for post in moved:
+        post.scheduled_at += delta
+    repo.save(posts)
+    for post in moved:
+        print(f"{post.id} -> {post.scheduled_at.isoformat(timespec='minutes')}")
+    print(f"shifted {len(moved)} post(s) of @{handle} by {delta}")
+    return 0
+
+
 def cmd_remove(args: argparse.Namespace) -> int:
     repo = QueueRepository()
     if repo.get(args.post_id) is None:
@@ -160,6 +192,18 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument("post_id")
     status.add_argument("status", choices=[s.value for s in PostStatus])
     status.set_defaults(handler=cmd_set_status)
+
+    move = sub.add_parser("move", help="set a new time for one post")
+    move.add_argument("post_id")
+    move.add_argument("--at", required=True, help="'YYYY-MM-DD HH:MM' (or ISO with offset)")
+    move.add_argument("--tz", default="+03:00", help="UTC offset for --at without one (default Moscow)")
+    move.set_defaults(handler=cmd_move)
+
+    shift = sub.add_parser("shift", help="move all draft/approved posts of an account by N days / minutes")
+    shift.add_argument("--account", required=True)
+    shift.add_argument("--days", type=int, default=0, help="negative = earlier")
+    shift.add_argument("--minutes", type=int, default=0)
+    shift.set_defaults(handler=cmd_shift)
 
     remove = sub.add_parser("remove", help="delete a post and its folder")
     remove.add_argument("post_id")
