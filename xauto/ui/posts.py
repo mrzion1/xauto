@@ -9,7 +9,8 @@ from typing import TYPE_CHECKING, Callable
 import flet as ft
 
 from ..config import QUEUE_FILE, post_dir
-from ..i18n import t
+from ..scheduling import pending_posts, schedule_account
+from ..i18n import plural, t
 from ..models import Account, Post, PostStatus
 from ..services.media import is_video, thumbnail_for
 from ..storage import QueueRepository
@@ -150,9 +151,13 @@ class PostsView(ft.Container):
             ],
             spacing=14,
         )
-        approve_all = theme.primary_button(t("posts.approve_all"), ft.Icons.DONE_ALL_ROUNDED,
-                                           on_click=lambda _: self._approve_all())
-        return ft.Row([ft.Row([back, who], spacing=8), approve_all], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+        approve_all = theme.ghost_button(t("posts.approve_all"), ft.Icons.DONE_ALL_ROUNDED,
+                                         on_click=lambda _: self._approve_all())
+        self._schedule_button = theme.primary_button(t("posts.schedule"), ft.Icons.SCHEDULE_SEND_ROUNDED,
+                                                     on_click=lambda _: self._schedule())
+        self._schedule_spinner = ft.ProgressRing(width=18, height=18, stroke_width=2, color=theme.TEXT, visible=False)
+        actions = ft.Row([approve_all, self._schedule_spinner, self._schedule_button], spacing=10)
+        return ft.Row([ft.Row([back, who], spacing=8), actions], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
 
     def refresh(self) -> None:
         try:
@@ -165,7 +170,7 @@ class PostsView(ft.Container):
         for post in posts:
             counts[post.status] += 1
         self._summary.controls = [
-            self._count_pill(t(f"status.{status.value}"), counts[status])
+            self._count_pill(plural(f"count.{status.value}", counts[status]), counts[status])
             for status in PostStatus if counts[status]
         ] or [self._count_pill(t("posts.total"), 0)]
 
@@ -234,6 +239,42 @@ class PostsView(ft.Container):
         self.repo.upsert(fresh)
         show_toast(self.page, t(f"posts.toast.{status.value}"))
         self.refresh()
+
+    def _schedule(self) -> None:
+        """Push approved future posts into X's scheduler (runs in the background)."""
+        todo = pending_posts(self.account.handle)
+        if not todo:
+            show_toast(self.page, t("posts.schedule.nothing"))
+            return
+
+        self._set_scheduling(True)
+        show_toast(self.page, t("posts.schedule.started", count=len(todo)))
+
+        def on_result(result) -> None:
+            # Statuses are already saved by schedule_account; just repaint.
+            if not result.ok:
+                show_toast(self.page, t("posts.schedule.failed", error=result.message), error=True)
+            self.refresh()
+
+        def work() -> None:
+            try:
+                results = schedule_account(self.account, self.shell.settings, on_result=on_result)
+                done = sum(r.ok for r in results)
+                show_toast(self.page, t("posts.schedule.done", done=done, total=len(results)),
+                           error=done != len(results))
+            except Exception as exc:  # AdsPower down, browser closed mid-way, ...
+                show_toast(self.page, f"{type(exc).__name__}: {exc}", error=True)
+            finally:
+                self._set_scheduling(False)
+                self.refresh()
+
+        run_in_background(work)
+
+    def _set_scheduling(self, busy: bool) -> None:
+        self._schedule_button.disabled = busy
+        self._schedule_spinner.visible = busy
+        if self.page:
+            self.update()
 
     def _approve_all(self) -> None:
         posts = self.repo.load()

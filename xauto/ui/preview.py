@@ -174,6 +174,9 @@ class PreviewDialog(ft.AlertDialog):
         if self.post.status is PostStatus.DRAFT:
             right.append(theme.primary_button(t("preview.approve"), ft.Icons.CHECK_ROUNDED,
                                               on_click=lambda _: self._set_status(PostStatus.APPROVED)))
+        elif self.post.status is PostStatus.FAILED:
+            right.append(theme.primary_button(t("preview.retry"), ft.Icons.REPLAY_ROUNDED,
+                                              on_click=lambda _: self._set_status(PostStatus.APPROVED)))
         elif self.post.status is PostStatus.APPROVED:
             right.append(theme.ghost_button(t("preview.unapprove"), ft.Icons.UNDO_ROUNDED,
                                             on_click=lambda _: self._set_status(PostStatus.DRAFT)))
