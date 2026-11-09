@@ -8,6 +8,7 @@
     python -m xauto shift --account workmadz --days -1
     python -m xauto schedule --account workmadz [--dry-run] [--post <id>]
     python -m xauto remove <post_id>
+    python -m xauto install-remote --start-now   # Telegram: /claude /restart /stop /status /screen
 
 Every command goes through the same repositories as the UI, so the queue file
 stays valid and the running app picks changes up automatically.
@@ -17,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import shutil
 import subprocess
 import sys
@@ -68,6 +70,16 @@ def validate_media(files: list[Path]) -> None:
         raise CliError("X does not allow mixing images and a video in one post")
     if len(videos) > MAX_VIDEOS or len(images) > MAX_IMAGES:
         raise CliError(f"too many attachments (max {MAX_IMAGES} images or {MAX_VIDEOS} video)")
+
+
+def setup_logging(log_file: Path) -> None:
+    """Background tasks have no console, so everything also goes to a log file."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+        handlers=[logging.FileHandler(log_file, encoding="utf-8")]
+        + ([logging.StreamHandler()] if sys.stderr else []),  # pythonw has no stderr
+    )
 
 
 # --- Commands --------------------------------------------------------------------
@@ -191,13 +203,7 @@ def cmd_notify(args: argparse.Namespace) -> int:
     from .config import DATA_DIR, Settings
     from .notify import run_notify
 
-    # The scheduled task has no console, so everything also goes to data/notify.log.
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(message)s",
-        handlers=[logging.FileHandler(DATA_DIR / "notify.log", encoding="utf-8")]
-        + ([logging.StreamHandler()] if sys.stderr else []),  # pythonw has no stderr
-    )
+    setup_logging(DATA_DIR / "notify.log")
     try:
         report = run_notify(Settings.load())
     except Exception:
@@ -254,6 +260,76 @@ def cmd_install_task(args: argparse.Namespace) -> int:
 def cmd_uninstall_task(args: argparse.Namespace) -> int:
     result = subprocess.run(["schtasks", "/Delete", "/F", "/TN", TASK_NAME], capture_output=True, text=True)
     print(result.stdout.strip() or result.stderr.strip())
+    return 0
+
+
+# --- Remote control from Telegram ------------------------------------------------
+
+STARTUP_SHORTCUT = Path(os.environ.get("APPDATA", "")) / "Microsoft/Windows/Start Menu/Programs/Startup/Xauto remote.lnk"
+
+
+def _single_instance(name: str) -> bool:
+    """Windows named mutex: False if another watcher already holds it."""
+    import ctypes
+
+    # use_last_error: ctypes.windll may clobber GetLastError between calls.
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateMutexW(None, False, name)          # handle lives as long as the process
+    return ctypes.get_last_error() != 183             # ERROR_ALREADY_EXISTS
+
+
+def cmd_remote(args: argparse.Namespace) -> int:
+    from .config import DATA_DIR, REMOTE_STATE_FILE, Settings
+    from .remote import RemoteControl
+    from .services.claude_session import ClaudeSession
+    from .services.screen import capture_jpeg
+    from .services.telegram_bot import TelegramBot, TelegramError
+
+    setup_logging(DATA_DIR / "remote.log")
+    if not _single_instance(r"Local\XautoRemote"):
+        logging.info("another watcher is already running, exiting")
+        return 0
+
+    settings = Settings.load()
+    try:
+        control = RemoteControl(
+            TelegramBot(settings.telegram_bot_token), settings.telegram_chat_id,
+            ClaudeSession(settings.claude_launcher, REMOTE_STATE_FILE), capture_jpeg,
+        )
+    except TelegramError as exc:
+        raise CliError(str(exc)) from exc
+    logging.info("watcher started")
+    control.run_forever()
+    return 0
+
+
+def cmd_install_remote(args: argparse.Namespace) -> int:
+    """Start the watcher at every Windows logon (Startup folder: no admin rights needed)."""
+    from .config import ROOT_DIR
+
+    pythonw = Path(sys.executable).with_name("pythonw.exe")
+    runner = ROOT_DIR / "scripts" / "remote_task.pyw"
+    script = (
+        "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($env:XA_LNK);"
+        "$s.TargetPath = $env:XA_EXE; $s.Arguments = $env:XA_ARGS;"
+        "$s.WorkingDirectory = $env:XA_DIR; $s.Save()"
+    )
+    env = {**os.environ, "XA_LNK": str(STARTUP_SHORTCUT), "XA_EXE": str(pythonw),
+           "XA_ARGS": f'"{runner}"', "XA_DIR": str(ROOT_DIR)}
+    result = subprocess.run(["powershell", "-NoProfile", "-Command", script], capture_output=True, text=True, env=env)
+    if result.returncode != 0:
+        raise CliError(f"could not create the startup shortcut: {result.stderr.strip()}")
+    print(f"startup shortcut created: {STARTUP_SHORTCUT}")
+
+    if args.start_now:
+        subprocess.Popen([str(pythonw), str(runner)], cwd=ROOT_DIR)
+        print("watcher started")
+    return 0
+
+
+def cmd_uninstall_remote(args: argparse.Namespace) -> int:
+    STARTUP_SHORTCUT.unlink(missing_ok=True)
+    print("startup shortcut removed (a running watcher stops at the next logoff)")
     return 0
 
 
@@ -325,6 +401,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     untask = sub.add_parser("uninstall-task", help="remove the scheduled task")
     untask.set_defaults(handler=cmd_uninstall_task)
+
+    remote = sub.add_parser("remote", help="obey commands from your Telegram bot (/claude, /screen ...)")
+    remote.set_defaults(handler=cmd_remote)
+
+    inst_remote = sub.add_parser("install-remote", help="start the Telegram watcher at every Windows logon")
+    inst_remote.add_argument("--start-now", action="store_true", help="also start it right away")
+    inst_remote.set_defaults(handler=cmd_install_remote)
+
+    uninst_remote = sub.add_parser("uninstall-remote", help="stop starting the watcher at logon")
+    uninst_remote.set_defaults(handler=cmd_uninstall_remote)
 
     remove = sub.add_parser("remove", help="delete a post and its folder")
     remove.add_argument("post_id")
