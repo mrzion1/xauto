@@ -45,7 +45,7 @@ Everything runs locally. No accounts, cookies or proxies leave your machine.
 | ✅ | Posts screen per account, grouped by day, with media thumbnails |
 | ✅ | Preview that looks like the real post on X (text, images, video with duration), approve / unapprove |
 | ✅ | CLI to add posts safely: `python -m xauto add-post ...` |
-| 🚧 | Push approved posts into X's native scheduler through AdsPower |
+| ✅ | Push approved posts into X's native scheduler through AdsPower, with a request guard that checks time, text and media before X accepts anything |
 | 🚧 | Share published posts to Telegram chats |
 
 ## Requirements
@@ -103,6 +103,29 @@ with `python -m xauto add-post` (validates everything) or by editing the file.
 The format is documented in
 [docs/QUEUE_FORMAT.md](docs/QUEUE_FORMAT.md), with a ready-to-copy example in
 [examples/queue.example.json](examples/queue.example.json).
+
+## Scheduling on X
+
+Approved posts go into X's own scheduler, so they are published even when
+your PC is off.
+
+```bash
+python -m xauto schedule --account your_handle --dry-run   # full run, nothing created
+python -m xauto schedule --account your_handle             # live
+```
+
+or press **Schedule on X** on the account's posts screen.
+
+The bot opens the account's AdsPower profile, types the post, uploads the
+media and fills X's schedule dialog. The browser's own clock converts the
+time, so the profile's time zone (set by its proxy) never shifts a post.
+Right before X receives the request, Xauto intercepts `CreateScheduledTweet`
+and compares the UTC send time, the exact text and the attachment count with
+the queue. On any mismatch the request is dropped and the post is marked
+failed with a screenshot in its folder.
+
+Requires Playwright (`pip install -r requirements.txt`); no separate browser
+download is needed because it attaches to AdsPower's browser.
 
 ## Privacy
 
