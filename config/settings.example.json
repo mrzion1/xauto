@@ -1,0 +1,6 @@
+{
+  "language": "ru",
+  "adspower_api_url": "http://127.0.0.1:50325",
+  "adspower_api_key": "",
+  "refill_warning_days": 2
+}
