@@ -98,6 +98,7 @@ On first launch `config/settings.example.json` is copied to
 | `refill_warning_days` | A card turns yellow when its queue ends within this many days. |
 | `telegram_bot_token`, `telegram_chat_id` | Your bot; filled by `telegram-setup`. |
 | `notify_give_up_hours` | Stop looking for a post after this long and send the profile link. |
+| `remote_bot_token`, `remote_chat_id` | The remote-control bot (separate from the post-links bot). |
 | `claude_launcher` | `.bat` opened by the bot's `/claude` command (empty = off). |
 
 ## Post queue
@@ -151,28 +152,37 @@ the link arrives on the next run, marked as late. Log: `data/notify.log`.
 
 ## Telegram: remote control
 
-A small watcher starts at every Windows logon (Startup folder, no admin rights,
-no console window) and obeys commands from your own chat only. Everyone else
-gets no reply at all.
+Remote control uses a **second** bot, so the post-links bot only ever carries
+post links. The same bot is shared with Claude Code's
+[Telegram channel](https://code.claude.com/docs/en/channels), and Telegram lets
+only one program read a bot at a time, so it is handed back and forth:
 
-| Command | Action |
-|---------|--------|
-| `/claude` | open the terminal from `claude_launcher` |
-| `/restart` | close it and open it again |
-| `/stop` | close it (the whole process tree) |
-| `/status` | is it running? |
-| `/screen` | screenshot of all monitors |
+| Claude terminal | Who reads the bot | What happens |
+|-----------------|-------------------|--------------|
+| closed | Xauto watcher | `/claude` opens it, `/screen` sends a screenshot, `/status` |
+| open | Claude itself | you chat with Claude; `/screen` `/restart` `/stop` are done by Claude, restart / stop go through the watcher (`python -m xauto session restart\|stop`) |
 
-```bash
-python -m xauto install-remote --start-now   # remove with: python -m xauto uninstall-remote
-```
+The watcher starts at every Windows logon (Startup folder, no admin rights,
+no console window), obeys your own chat only, drops commands older than
+10 minutes, and never polls while a Claude channel is active (it checks the
+plugin's PID file and backs off on 409 Conflict).
 
-Set `claude_launcher` in `config/settings.json` to a `.bat` that starts
-Claude Code with the [Telegram channel](https://code.claude.com/docs/en/channels)
-on a **second** bot (Telegram lets only one program read a bot's messages).
-Commands older than 10 minutes are dropped, so nothing fires hours later when
-the PC comes back on. While the watcher runs, `telegram-setup` can't read the
-bot (it needs the same updates): stop the watcher first. Log: `data/remote.log`.
+Setup:
+
+1. Create a second bot with @BotFather; put its token into `remote_bot_token`
+   and your chat id into `remote_chat_id` in `config/settings.json`.
+2. Install the Telegram plugin and Bun, save the same token to
+   `~/.claude/channels/telegram/.env`. Keep the plugin **disabled** in your
+   user settings and enable it only for the remote session with
+   `--settings`, or every normal Claude session would grab the bot.
+3. Point `claude_launcher` at a `.bat` like:
+   ```bat
+   claude --channels plugin:telegram@claude-plugins-official ^
+          --settings claude_tg_settings.json --append-system-prompt-file claude_tg_prompt.md
+   ```
+4. `python -m xauto install-remote --start-now` (remove with `uninstall-remote`).
+   Open the terminal by hand with `python -m xauto session start` so the bot
+   can still close or restart it. Log: `data/remote.log`.
 
 ## Privacy
 

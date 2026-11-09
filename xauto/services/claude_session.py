@@ -21,10 +21,25 @@ class SessionError(RuntimeError):
     pass
 
 
+# Claude Code's Telegram channel plugin writes the PID of its poller here while it runs.
+CHANNEL_PID_FILE = Path.home() / ".claude" / "channels" / "telegram" / "bot.pid"
+
+
+def _process_name(pid: int) -> str:
+    out = subprocess.run(
+        ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+        capture_output=True, text=True, creationflags=NO_WINDOW,
+    ).stdout.strip()
+    # '"cmd.exe","1234",...' -> 'cmd.exe'; "INFO: No tasks ..." -> ''
+    return out.split(",", 1)[0].strip('"').lower() if out.startswith('"') else ""
+
+
 class ClaudeSession:
-    def __init__(self, launcher: str | Path, state_file: Path) -> None:
+    def __init__(self, launcher: str | Path, state_file: Path,
+                 channel_pid_file: Path | None = CHANNEL_PID_FILE) -> None:
         self.launcher = Path(launcher) if launcher else None
         self.state_file = state_file
+        self.channel_pid_file = channel_pid_file
 
     # --- state --------------------------------------------------------------
 
@@ -43,18 +58,25 @@ class ClaudeSession:
     # --- queries ------------------------------------------------------------
 
     def is_running(self) -> bool:
+        """Is the terminal we opened (by /claude or `session start`) still there?"""
         pid = self._pid()
         if pid is None:
             return False
-        out = subprocess.run(
-            ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
-            capture_output=True, text=True, creationflags=NO_WINDOW,
-        ).stdout
         # Guard against PID reuse: the process must still be our console's cmd.exe.
-        alive = '"cmd.exe"' in out.lower()
+        alive = _process_name(pid) == "cmd.exe"
         if not alive:
             self._remember(None)
         return alive
+
+    def channel_active(self) -> bool:
+        """Is any Claude session polling the bot right now (even one started by hand)?"""
+        if self.channel_pid_file is None:
+            return False
+        try:
+            pid = int(self.channel_pid_file.read_text(encoding="utf-8").strip())
+        except (OSError, ValueError):
+            return False
+        return _process_name(pid) == "bun.exe"   # the plugin's poller runs on Bun
 
     # --- actions ------------------------------------------------------------
 

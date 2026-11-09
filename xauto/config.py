@@ -29,6 +29,7 @@ QUEUE_FILE = DATA_DIR / "queue.json"
 AVATARS_DIR = DATA_DIR / "avatars"
 POSTS_DIR = DATA_DIR / "posts"          # one sub-folder per post: media, notes, thumbnails
 REMOTE_STATE_FILE = DATA_DIR / "remote_session.json"   # PID of the terminal opened by /claude
+REMOTE_REQUEST_FILE = DATA_DIR / "remote_request.json"  # restart / stop asked by the Claude session
 
 
 def post_dir(post_id: str) -> Path:
@@ -59,7 +60,11 @@ class Settings:
     telegram_chat_id: str = ""
     # Stop looking for a published post after this long and send the profile link instead.
     notify_give_up_hours: int = 3
-    # .bat that the bot's /claude command opens (e.g. claude --channels ...). Empty = disabled.
+    # Remote control uses its OWN bot (shared with Claude Code's Telegram channel),
+    # so the post-links bot above only ever carries post links.
+    remote_bot_token: str = ""
+    remote_chat_id: str = ""
+    # .bat that the remote bot's /claude command opens (e.g. claude --channels ...). Empty = disabled.
     claude_launcher: str = ""
 
     @classmethod

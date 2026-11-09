@@ -279,7 +279,7 @@ def _single_instance(name: str) -> bool:
 
 
 def cmd_remote(args: argparse.Namespace) -> int:
-    from .config import DATA_DIR, REMOTE_STATE_FILE, Settings
+    from .config import DATA_DIR, REMOTE_REQUEST_FILE, REMOTE_STATE_FILE, Settings
     from .remote import RemoteControl
     from .services.claude_session import ClaudeSession
     from .services.screen import capture_jpeg
@@ -293,13 +293,49 @@ def cmd_remote(args: argparse.Namespace) -> int:
     settings = Settings.load()
     try:
         control = RemoteControl(
-            TelegramBot(settings.telegram_bot_token), settings.telegram_chat_id,
+            TelegramBot(settings.remote_bot_token), settings.remote_chat_id,
             ClaudeSession(settings.claude_launcher, REMOTE_STATE_FILE), capture_jpeg,
+            request_file=REMOTE_REQUEST_FILE,
         )
     except TelegramError as exc:
         raise CliError(str(exc)) from exc
     logging.info("watcher started")
     control.run_forever()
+    return 0
+
+
+def cmd_session(args: argparse.Namespace) -> int:
+    """`start`: open the Claude terminal (desktop shortcut), tracked so the bot can manage it.
+    `restart` / `stop`: called from inside that session; the watcher does it,
+    because a process can't reliably kill and relaunch its own console."""
+    from .config import REMOTE_REQUEST_FILE, REMOTE_STATE_FILE, Settings
+    from .remote import request_session_action
+    from .services.claude_session import ClaudeSession, SessionError
+
+    if args.action == "start":
+        try:
+            started = ClaudeSession(Settings.load().claude_launcher, REMOTE_STATE_FILE).start()
+        except SessionError as exc:
+            raise CliError(str(exc)) from exc
+        print("started" if started else "already running")
+        return 0
+
+    request_session_action(REMOTE_REQUEST_FILE, args.action)
+    print(f"{args.action} requested; the watcher handles it within a few seconds")
+    return 0
+
+
+def cmd_screen(args: argparse.Namespace) -> int:
+    from .services.screen import ScreenError, capture_jpeg
+
+    try:
+        image = capture_jpeg()
+    except ScreenError as exc:
+        raise CliError(str(exc)) from exc
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(image)
+    print(out.resolve())
     return 0
 
 
@@ -402,8 +438,16 @@ def build_parser() -> argparse.ArgumentParser:
     untask = sub.add_parser("uninstall-task", help="remove the scheduled task")
     untask.set_defaults(handler=cmd_uninstall_task)
 
-    remote = sub.add_parser("remote", help="obey commands from your Telegram bot (/claude, /screen ...)")
+    remote = sub.add_parser("remote", help="obey commands from your remote-control bot (/claude, /screen ...)")
     remote.set_defaults(handler=cmd_remote)
+
+    session = sub.add_parser("session", help="open the Claude terminal, or (from inside it) restart / close it")
+    session.add_argument("action", choices=["start", "restart", "stop"])
+    session.set_defaults(handler=cmd_session)
+
+    screen = sub.add_parser("screen", help="save a screenshot of all monitors as JPEG")
+    screen.add_argument("--out", default="data/screen.jpg")
+    screen.set_defaults(handler=cmd_screen)
 
     inst_remote = sub.add_parser("install-remote", help="start the Telegram watcher at every Windows logon")
     inst_remote.add_argument("--start-now", action="store_true", help="also start it right away")
