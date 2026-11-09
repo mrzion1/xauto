@@ -1,0 +1,177 @@
+"""Command line interface for filling the queue from scripts (or an AI assistant).
+
+    python -m xauto add-post --account workmadz --at "2026-11-10 19:45" \\
+        --text-file post.txt --media clip.mp4 --notes notes.txt
+    python -m xauto list [--account workmadz]
+    python -m xauto set-status <post_id> approved
+    python -m xauto remove <post_id>
+
+Every command goes through the same repositories as the UI, so the queue file
+stays valid and the running app picks changes up automatically.
+"""
+
+from __future__ import annotations
+
+import argparse
+import shutil
+import sys
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+from .config import ensure_dirs, post_dir
+from .models import Post, PostStatus, TelegramStatus, new_id, normalize_handle
+from .services.media import is_image, is_video
+from .storage import AccountRepository, QueueRepository
+
+MAX_IMAGES = 4
+MAX_VIDEOS = 1
+
+
+class CliError(Exception):
+    """User-facing error: printed without a traceback."""
+
+
+# --- Parsing helpers -----------------------------------------------------------
+
+
+def parse_when(value: str, tz_offset: str) -> datetime:
+    """'2026-11-10 19:45' + '+03:00' -> aware datetime. ISO strings with an offset win."""
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace(" ", "T"))
+    except ValueError as exc:
+        raise CliError(f"bad --at value {value!r}, expected 'YYYY-MM-DD HH:MM'") from exc
+    if parsed.tzinfo is not None:
+        return parsed
+
+    sign = -1 if tz_offset.startswith("-") else 1
+    hours, _, minutes = tz_offset.lstrip("+-").partition(":")
+    offset = timedelta(hours=int(hours), minutes=int(minutes or 0)) * sign
+    return parsed.replace(tzinfo=timezone(offset))
+
+
+def validate_media(files: list[Path]) -> None:
+    for file in files:
+        if not file.is_file():
+            raise CliError(f"media file not found: {file}")
+        if not (is_image(file) or is_video(file)):
+            raise CliError(f"unsupported media type: {file.name}")
+
+    videos = [f for f in files if is_video(f)]
+    images = [f for f in files if is_image(f)]
+    # X rules: up to 4 images, or exactly one video, never mixed.
+    if videos and images:
+        raise CliError("X does not allow mixing images and a video in one post")
+    if len(videos) > MAX_VIDEOS or len(images) > MAX_IMAGES:
+        raise CliError(f"too many attachments (max {MAX_IMAGES} images or {MAX_VIDEOS} video)")
+
+
+# --- Commands --------------------------------------------------------------------
+
+
+def cmd_add_post(args: argparse.Namespace) -> int:
+    handle = normalize_handle(args.account)
+    known = {a.handle for a in AccountRepository().load()}
+    if handle not in known:
+        raise CliError(f"unknown account @{handle}; add it in the app first (known: {', '.join(sorted(known)) or 'none'})")
+
+    text = Path(args.text_file).read_text(encoding="utf-8").strip()
+    if not text:
+        raise CliError("post text is empty")
+
+    media = [Path(m) for m in args.media]
+    validate_media(media)
+
+    post = Post(
+        id=new_id(),
+        account=handle,
+        scheduled_at=parse_when(args.at, args.tz),
+        text=text,
+        telegram=TelegramStatus.OFF if args.no_telegram else TelegramStatus.PENDING,
+    )
+
+    # Copy attachments into the post's own folder so the queue is self-contained.
+    folder = post_dir(post.id)
+    folder.mkdir(parents=True, exist_ok=True)
+    for file in media:
+        shutil.copy2(file, folder / file.name)
+        post.media.append(file.name)
+    if args.notes:
+        shutil.copy2(args.notes, folder / "notes.txt")
+
+    QueueRepository().upsert(post)
+    print(f"added {post.id}  @{handle}  {post.scheduled_at.isoformat(timespec='minutes')}  media={post.media}")
+    return 0
+
+
+def cmd_list(args: argparse.Namespace) -> int:
+    repo = QueueRepository()
+    posts = repo.for_account(args.account) if args.account else repo.load()
+    for post in posts:
+        first_line = post.text.splitlines()[0][:70] if post.text else ""
+        print(f"{post.id}  {post.scheduled_at:%Y-%m-%d %H:%M %z}  @{post.account:<16} {post.status.value:<10} {first_line}")
+    if not posts:
+        print("queue is empty")
+    return 0
+
+
+def cmd_set_status(args: argparse.Namespace) -> int:
+    repo = QueueRepository()
+    post = repo.get(args.post_id)
+    if post is None:
+        raise CliError(f"no post with id {args.post_id}")
+    post.status = PostStatus(args.status)
+    repo.upsert(post)
+    print(f"{post.id} -> {post.status.value}")
+    return 0
+
+
+def cmd_remove(args: argparse.Namespace) -> int:
+    repo = QueueRepository()
+    if repo.get(args.post_id) is None:
+        raise CliError(f"no post with id {args.post_id}")
+    repo.delete(args.post_id)
+    shutil.rmtree(post_dir(args.post_id), ignore_errors=True)
+    print(f"removed {args.post_id}")
+    return 0
+
+
+# --- Entry point -------------------------------------------------------------------
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="xauto", description="Xauto queue tools")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    add = sub.add_parser("add-post", help="add a draft post to the queue")
+    add.add_argument("--account", required=True, help="handle, with or without @")
+    add.add_argument("--at", required=True, help="'YYYY-MM-DD HH:MM' (or ISO with offset)")
+    add.add_argument("--tz", default="+03:00", help="UTC offset for --at without one (default Moscow, +03:00)")
+    add.add_argument("--text-file", required=True, help="UTF-8 file with the post text")
+    add.add_argument("--media", nargs="*", default=[], help="up to 4 images or 1 video")
+    add.add_argument("--notes", help="sources / notes file, stored as notes.txt next to the media")
+    add.add_argument("--no-telegram", action="store_true", help="do not share this post to Telegram chats")
+    add.set_defaults(handler=cmd_add_post)
+
+    lst = sub.add_parser("list", help="show the queue")
+    lst.add_argument("--account")
+    lst.set_defaults(handler=cmd_list)
+
+    status = sub.add_parser("set-status", help="change a post's status")
+    status.add_argument("post_id")
+    status.add_argument("status", choices=[s.value for s in PostStatus])
+    status.set_defaults(handler=cmd_set_status)
+
+    remove = sub.add_parser("remove", help="delete a post and its folder")
+    remove.add_argument("post_id")
+    remove.set_defaults(handler=cmd_remove)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    ensure_dirs()
+    args = build_parser().parse_args(argv)
+    try:
+        return args.handler(args)
+    except CliError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
