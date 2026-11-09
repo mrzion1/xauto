@@ -42,7 +42,9 @@ Everything runs locally. No accounts, cookies or proxies leave your machine.
 | ✅ | Queue overview: last planned post, days left, posts queued |
 | ✅ | Live reload when `data/queue.json` changes |
 | ✅ | Russian / English UI |
-| 🚧 | Review and approve queued posts in the app |
+| ✅ | Posts screen per account, grouped by day, with media thumbnails |
+| ✅ | Preview that looks like the real post on X (text, images, video with duration), approve / unapprove |
+| ✅ | CLI to add posts safely: `python -m xauto add-post ...` |
 | 🚧 | Push approved posts into X's native scheduler through AdsPower |
 | 🚧 | Share published posts to Telegram chats |
 
@@ -50,6 +52,7 @@ Everything runs locally. No accounts, cookies or proxies leave your machine.
 
 - Windows 10 / 11
 - Python **3.11+** on `PATH`
+- [FFmpeg](https://ffmpeg.org/) on `PATH` (video thumbnails in the preview; optional)
 - [AdsPower](https://www.adspower.com/) with the **Local API** enabled
   (*AdsPower → Automation → API*). The free plan is enough: Xauto only
   starts profiles, it does not list them.
@@ -95,7 +98,9 @@ On first launch `config/settings.example.json` is copied to
 
 ## Post queue
 
-Posts live in `data/queue.json`. The format is documented in
+Posts live in `data/queue.json`, attachments in `data/posts/<id>/`. Add them
+with `python -m xauto add-post` (validates everything) or by editing the file.
+The format is documented in
 [docs/QUEUE_FORMAT.md](docs/QUEUE_FORMAT.md), with a ready-to-copy example in
 [examples/queue.example.json](examples/queue.example.json).
 

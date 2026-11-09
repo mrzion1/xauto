@@ -1,23 +1,31 @@
 # Architecture
 
 ```
-main.py                  entry point
+main.py                  entry point (GUI)
 xauto/
-├── app.py               window setup, root layout
+├── __main__.py          `python -m xauto <command>` (CLI)
+├── cli.py               add-post / list / set-status / remove
+├── app.py               window setup
 ├── config.py            paths + Settings (config/settings.json)
 ├── models.py            Account, Post and their enums
 ├── storage.py           JSON repositories with atomic writes
 ├── i18n.py              RU / EN strings
 ├── services/
 │   ├── adspower.py      AdsPower Local API + Chrome DevTools tab opening
+│   ├── media.py         attachment types, ffmpeg thumbnails, durations
 │   └── x_profile.py     public profile lookup (name, avatar)
 └── ui/
+    ├── shell.py         root Stack + navigation between screens
     ├── theme.py         design tokens and shared widgets
+    ├── common.py        toasts, background threads, file watcher, avatar
     ├── background.py    animated particle backdrop
+    ├── home.py          home screen
     ├── account_card.py  one account on the home screen
+    ├── posts.py         an account's queue, grouped by day
+    ├── preview.py       post preview styled like X, approve / unapprove
+    ├── status.py        status colors and chips
     ├── dialogs.py       add / edit / delete dialogs
-    ├── formatting.py    date helpers
-    └── home.py          home screen
+    └── formatting.py    dates, durations, plural-safe helpers
 scripts/
 ├── build_icon.py        renders assets/icon.png + icon.ico with Pillow
 └── check_secrets.py     pre-commit / CI scan for private data
