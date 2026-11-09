@@ -10,8 +10,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "home.refresh": "Обновить",
         "home.empty.title": "Пока ни одного аккаунта",
         "home.empty.hint": "Добавь аккаунт X и укажи ID его профиля в AdsPower.",
-        "stats.accounts": "аккаунтов",
-        "stats.queued": "постов в очереди",
+        "stats.accounts": "аккаунт|аккаунта|аккаунтов",
+        "stats.queued": "пост в очереди|поста в очереди|постов в очереди",
         "stats.refill": "нужно заполнить",
         "stats.adspower.on": "AdsPower подключен",
         "stats.adspower.off": "AdsPower не найден",
@@ -21,7 +21,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "card.queue.today": "заканчиваются сегодня",
         "card.queue.over": "закончились {days} дн. назад",
         "card.posts": "{count} в очереди",
-        "card.open": "Открыть в AdsPower",
+        "card.open": "AdsPower",
+        "card.open.tooltip": "Открыть аккаунт в его профиле AdsPower",
         "card.edit": "Изменить",
         "card.delete": "Удалить",
         "card.opening": "Открываю профиль {handle}…",
@@ -45,6 +46,32 @@ _STRINGS: dict[str, dict[str, str]] = {
         "toast.deleted": "Аккаунт {handle} удалён",
         "toast.synced": "Профили обновлены",
         "lang.switch": "EN",
+        "card.posts.open": "Посты",
+        "status.draft": "Черновик",
+        "status.approved": "Одобрен",
+        "status.scheduled": "В отложке",
+        "status.published": "Опубликован",
+        "status.failed": "Ошибка",
+        "posts.title": "посты",
+        "posts.back": "Назад",
+        "posts.total": "постов",
+        "posts.approve_all": "Одобрить все черновики",
+        "posts.empty.title": "Постов пока нет",
+        "posts.empty.hint": "Как только Claude добавит посты в очередь, они появятся здесь.",
+        "posts.gone": "Пост уже удалён из очереди",
+        "posts.toast.approved": "Пост одобрен",
+        "posts.toast.draft": "Пост возвращён в черновики",
+        "posts.toast.approved_all": "Одобрено постов: {count}",
+        "preview.when": "Выйдет {date}",
+        "preview.length": "{count} симв.",
+        "preview.premium": "длиннее 280, нужен Premium",
+        "preview.folder": "Папка поста",
+        "preview.no_folder": "У поста нет папки с файлами",
+        "preview.open_file": "Открыть файл",
+        "preview.missing": "Файл не найден: {name}",
+        "preview.close": "Закрыть",
+        "preview.approve": "Одобрить",
+        "preview.unapprove": "Вернуть в черновик",
     },
     "en": {
         "app.subtitle": "Post planning for X",
@@ -53,8 +80,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "home.refresh": "Refresh",
         "home.empty.title": "No accounts yet",
         "home.empty.hint": "Add an X account and enter the id of its AdsPower profile.",
-        "stats.accounts": "accounts",
-        "stats.queued": "posts queued",
+        "stats.accounts": "account|accounts",
+        "stats.queued": "post queued|posts queued",
         "stats.refill": "need refill",
         "stats.adspower.on": "AdsPower connected",
         "stats.adspower.off": "AdsPower not found",
@@ -64,7 +91,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "card.queue.today": "ends today",
         "card.queue.over": "ran out {days} days ago",
         "card.posts": "{count} queued",
-        "card.open": "Open in AdsPower",
+        "card.open": "AdsPower",
+        "card.open.tooltip": "Open the account in its AdsPower profile",
         "card.edit": "Edit",
         "card.delete": "Delete",
         "card.opening": "Opening {handle}…",
@@ -88,6 +116,32 @@ _STRINGS: dict[str, dict[str, str]] = {
         "toast.deleted": "{handle} deleted",
         "toast.synced": "Profiles refreshed",
         "lang.switch": "RU",
+        "card.posts.open": "Posts",
+        "status.draft": "Draft",
+        "status.approved": "Approved",
+        "status.scheduled": "Scheduled",
+        "status.published": "Published",
+        "status.failed": "Failed",
+        "posts.title": "posts",
+        "posts.back": "Back",
+        "posts.total": "posts",
+        "posts.approve_all": "Approve all drafts",
+        "posts.empty.title": "No posts yet",
+        "posts.empty.hint": "Posts appear here as soon as they are added to the queue.",
+        "posts.gone": "This post is no longer in the queue",
+        "posts.toast.approved": "Post approved",
+        "posts.toast.draft": "Post moved back to drafts",
+        "posts.toast.approved_all": "Approved: {count}",
+        "preview.when": "Goes out {date}",
+        "preview.length": "{count} chars",
+        "preview.premium": "over 280, needs Premium",
+        "preview.folder": "Post folder",
+        "preview.no_folder": "This post has no media folder",
+        "preview.open_file": "Open file",
+        "preview.missing": "File not found: {name}",
+        "preview.close": "Close",
+        "preview.approve": "Approve",
+        "preview.unapprove": "Back to draft",
     },
 }
 
@@ -101,6 +155,23 @@ def set_language(code: str) -> None:
 
 def get_language() -> str:
     return _language
+
+
+def plural(key: str, count: int) -> str:
+    """Pick the right word form for ``count``.
+
+    Forms are stored in one string separated by '|':
+    ru = "one|few|many" (1 пост, 2 поста, 5 постов), en = "one|other".
+    """
+    forms = t(key).split("|")
+    if _language == "ru" and len(forms) == 3:
+        tail10, tail100 = count % 10, count % 100
+        if tail10 == 1 and tail100 != 11:
+            return forms[0]
+        if 2 <= tail10 <= 4 and not 12 <= tail100 <= 14:
+            return forms[1]
+        return forms[2]
+    return forms[0] if count == 1 else forms[-1]
 
 
 def t(key: str, **kwargs: object) -> str:

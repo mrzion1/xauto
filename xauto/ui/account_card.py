@@ -6,12 +6,12 @@ from typing import Callable
 
 import flet as ft
 
-from ..config import AVATARS_DIR
 from ..i18n import t
 from ..models import Account
 from ..storage import QueueSummary
 from . import theme
-from .formatting import initials, short_date
+from .common import account_avatar
+from .formatting import short_date
 
 
 class AccountCard(ft.Container):
@@ -21,6 +21,7 @@ class AccountCard(ft.Container):
         summary: QueueSummary,
         warning_days: int,
         on_open: Callable[[Account], None],
+        on_posts: Callable[[Account], None],
         on_edit: Callable[[Account], None],
         on_delete: Callable[[Account], None],
     ) -> None:
@@ -31,10 +32,23 @@ class AccountCard(ft.Container):
             t("card.open"),
             icon=ft.Icons.OPEN_IN_NEW_ROUNDED,
             on_click=lambda _: self._handle_open(),
+            tooltip=t("card.open.tooltip"),
             expand=True,
             style=ft.ButtonStyle(
                 color=theme.TEXT,
                 side=ft.BorderSide(1, theme.BORDER_HOVER),
+                shape=ft.RoundedRectangleBorder(radius=theme.RADIUS_S),
+                padding=ft.Padding.symmetric(horizontal=14, vertical=12),
+            ),
+        )
+        self._posts_button = ft.Button(
+            t("card.posts.open"),
+            icon=ft.Icons.VIEW_AGENDA_OUTLINED,
+            on_click=lambda _: on_posts(account),
+            expand=True,
+            bgcolor=theme.ACCENT,
+            color=theme.ON_ACCENT,
+            style=ft.ButtonStyle(
                 shape=ft.RoundedRectangleBorder(radius=theme.RADIUS_S),
                 padding=ft.Padding.symmetric(horizontal=14, vertical=12),
             ),
@@ -53,7 +67,7 @@ class AccountCard(ft.Container):
 
         header = ft.Row(
             [
-                self._avatar(),
+                account_avatar(account),
                 ft.Column(
                     [
                         ft.Text(account.display_name or account.handle, size=17, weight=ft.FontWeight.W_600,
@@ -74,7 +88,8 @@ class AccountCard(ft.Container):
                     header,
                     ft.Container(height=1, bgcolor=theme.BORDER),
                     self._queue_block(summary, warning_days),
-                    ft.Row([self._open_button, self._spinner], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                    ft.Row([self._posts_button, self._open_button, self._spinner],
+                           vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=10),
                 ],
                 spacing=16,
             ),
@@ -89,22 +104,6 @@ class AccountCard(ft.Container):
         )
 
     # --- Pieces -------------------------------------------------------------
-
-    def _avatar(self) -> ft.Control:
-        avatar_path = AVATARS_DIR / self.account.avatar_file if self.account.avatar_file else None
-        image = avatar_path.read_bytes() if avatar_path and avatar_path.exists() else None
-
-        return ft.Container(
-            content=ft.CircleAvatar(
-                foreground_image_src=image,
-                content=ft.Text(initials(self.account.display_name or self.account.handle), color=theme.TEXT),
-                bgcolor="#26262C",
-                radius=26,
-            ),
-            border=theme.border("#40FFFFFF", 1.5),
-            border_radius=30,
-            padding=2,
-        )
 
     @staticmethod
     def _queue_block(summary: QueueSummary, warning_days: int) -> ft.Control:

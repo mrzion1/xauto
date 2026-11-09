@@ -2,34 +2,35 @@
 
 from __future__ import annotations
 
-import asyncio
-import threading
+from typing import TYPE_CHECKING
 
 import flet as ft
 
-from ..config import QUEUE_FILE, Settings
-from ..i18n import get_language, set_language, t
+from ..config import QUEUE_FILE
+from ..i18n import plural, t
 from ..models import Account
 from ..services.adspower import AdsPowerClient, AdsPowerError
 from ..services.x_profile import download_avatar, fetch_profile
 from ..storage import AccountRepository, QueueRepository
 from . import theme
 from .account_card import AccountCard
+from .common import run_in_background, show_toast, watch_file
 from .dialogs import AccountDialog, ConfirmDeleteDialog
 
-# How often we look at queue.json for external edits (e.g. Claude adding posts).
-QUEUE_POLL_S = 3
+if TYPE_CHECKING:
+    from .shell import Shell
 
 
 class HomeView(ft.Container):
-    def __init__(self, settings: Settings) -> None:
-        self.settings = settings
+    def __init__(self, shell: "Shell") -> None:
+        self.shell = shell
+        self.settings = shell.settings
         self.accounts_repo = AccountRepository()
         self.queue_repo = QueueRepository()
-        self.adspower = AdsPowerClient(settings.adspower_api_url, settings.adspower_api_key)
+        self.adspower = AdsPowerClient(self.settings.adspower_api_url, self.settings.adspower_api_key)
 
         self._adspower_online = False
-        self._queue_mtime = 0.0
+        self._running = False
 
         self._header = ft.Container()
         self._stats = ft.Row(spacing=12, wrap=True)
@@ -57,19 +58,12 @@ class HomeView(ft.Container):
     def did_mount(self) -> None:
         self._running = True
         self.refresh()
-        self._run_in_background(self._sync_profiles)
-        self.page.run_task(self._watch_queue)
+        run_in_background(self._sync_profiles)
+        # Re-render when queue.json is changed from outside (CLI, Claude).
+        self.page.run_task(watch_file, QUEUE_FILE, lambda: self._running, self.refresh)
 
     def will_unmount(self) -> None:
         self._running = False
-
-    async def _watch_queue(self) -> None:
-        """Re-render when queue.json changes on disk."""
-        while self._running:
-            await asyncio.sleep(QUEUE_POLL_S)
-            mtime = QUEUE_FILE.stat().st_mtime if QUEUE_FILE.exists() else 0.0
-            if mtime != self._queue_mtime:
-                self.refresh()
 
     # --- Rendering ----------------------------------------------------------
 
@@ -78,13 +72,12 @@ class HomeView(ft.Container):
             accounts = self.accounts_repo.load()
         except (ValueError, KeyError) as exc:
             # Never fall back to an empty list here: a later save would wipe the file.
-            self._toast(f"accounts.json: {exc}", error=True)
+            show_toast(self.page, f"accounts.json: {exc}", error=True)
             return
         try:
             posts = self.queue_repo.load()
         except (ValueError, KeyError):
             posts = []  # a broken queue file must not take the whole UI down
-        self._queue_mtime = QUEUE_FILE.stat().st_mtime if QUEUE_FILE.exists() else 0.0
 
         summaries = {a.id: self.queue_repo.summary_for(a.handle, posts) for a in accounts}
         need_refill = sum(
@@ -92,10 +85,11 @@ class HomeView(ft.Container):
             if s.days_left() is None or s.days_left() <= self.settings.refill_warning_days
         )
 
+        queued = sum(s.upcoming for s in summaries.values())
         self._header.content = self._build_header()
         self._stats.controls = [
-            self._stat(str(len(accounts)), t("stats.accounts")),
-            self._stat(str(sum(s.upcoming for s in summaries.values())), t("stats.queued")),
+            self._stat(str(len(accounts)), plural("stats.accounts", len(accounts))),
+            self._stat(str(queued), plural("stats.queued", queued)),
             self._stat(str(need_refill), t("stats.refill"), theme.WARN if need_refill else None),
             self._adspower_pill(),
         ]
@@ -107,6 +101,7 @@ class HomeView(ft.Container):
                     summaries[account.id],
                     self.settings.refill_warning_days,
                     on_open=self._open_account,
+                    on_posts=self.shell.show_posts,
                     on_edit=self._edit_account,
                     on_delete=self._confirm_delete,
                 )
@@ -139,10 +134,10 @@ class HomeView(ft.Container):
         )
         actions = ft.Row(
             [
-                ft.TextButton(t("lang.switch"), on_click=lambda _: self._toggle_language(),
+                ft.TextButton(t("lang.switch"), on_click=lambda _: self.shell.toggle_language(),
                               style=ft.ButtonStyle(color=theme.TEXT_MUTED)),
                 ft.IconButton(ft.Icons.REFRESH_ROUNDED, icon_color=theme.TEXT_MUTED, tooltip=t("home.refresh"),
-                              on_click=lambda _: self._run_in_background(self._sync_profiles)),
+                              on_click=lambda _: run_in_background(self._sync_profiles)),
                 theme.primary_button(t("home.add"), ft.Icons.ADD_ROUNDED, on_click=lambda _: self._add_account()),
             ],
             spacing=6,
@@ -215,15 +210,15 @@ class HomeView(ft.Container):
     def _save_account(self, account: Account) -> None:
         self.accounts_repo.upsert(account)
         self.refresh()
-        self._toast(t("toast.saved", handle=account.at_handle))
+        show_toast(self.page, t("toast.saved", handle=account.at_handle))
         # Name / avatar are fetched in the background so the dialog closes instantly.
-        self._run_in_background(lambda: self._enrich(account))
+        run_in_background(lambda: self._enrich(account))
 
     def _confirm_delete(self, account: Account) -> None:
         def delete(acc: Account) -> None:
             self.accounts_repo.delete(acc.id)
             self.refresh()
-            self._toast(t("toast.deleted", handle=acc.at_handle))
+            show_toast(self.page, t("toast.deleted", handle=acc.at_handle))
 
         self.page.show_dialog(ConfirmDeleteDialog(account, on_confirm=delete))
 
@@ -233,27 +228,17 @@ class HomeView(ft.Container):
         def work() -> None:
             try:
                 self.adspower.open_url(account.adspower_id, account.profile_url)
-                self._toast(t("card.opened", handle=account.at_handle))
+                show_toast(self.page, t("card.opened", handle=account.at_handle))
             except AdsPowerError as exc:
-                self._toast(f"AdsPower: {exc}", error=True)
+                show_toast(self.page, f"AdsPower: {exc}", error=True)
             except Exception as exc:  # network hiccups with the browser's devtools port
-                self._toast(f"{type(exc).__name__}: {exc}", error=True)
+                show_toast(self.page, f"{type(exc).__name__}: {exc}", error=True)
             finally:
                 if card and card.page:
                     card.set_busy(False)
 
-        self._toast(t("card.opening", handle=account.at_handle))
-        self._run_in_background(work)
-
-    def _toggle_language(self) -> None:
-        self.settings.language = "en" if get_language() == "ru" else "ru"
-        self.settings.save()
-        set_language(self.settings.language)
-        # Section title is static text, so rebuild the whole view.
-        fresh = HomeView(self.settings)
-        fresh.left = fresh.top = fresh.right = fresh.bottom = 0
-        self.page.controls[0].controls[-1] = fresh
-        self.page.update()
+        show_toast(self.page, t("card.opening", handle=account.at_handle))
+        run_in_background(work)
 
     # --- Background work ----------------------------------------------------
 
@@ -278,20 +263,3 @@ class HomeView(ft.Container):
             self.accounts_repo.upsert(account)
         if refresh:
             self.refresh()
-
-    @staticmethod
-    def _run_in_background(fn) -> None:
-        threading.Thread(target=fn, daemon=True).start()
-
-    def _toast(self, message: str, error: bool = False) -> None:
-        if not self.page:
-            return
-        self.page.show_dialog(
-            ft.SnackBar(
-                ft.Text(message, color=theme.ON_ACCENT if not error else theme.TEXT),
-                bgcolor=theme.ACCENT if not error else "#5A1F22",
-                behavior=ft.SnackBarBehavior.FLOATING,
-                width=420,
-                duration=3000,
-            )
-        )

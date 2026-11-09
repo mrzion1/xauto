@@ -8,8 +8,7 @@ from . import __version__
 from .config import ASSETS_DIR, Settings, ensure_dirs
 from .i18n import set_language
 from .ui import theme
-from .ui.background import build_background
-from .ui.home import HomeView
+from .ui.shell import Shell
 
 
 def main(page: ft.Page) -> None:
@@ -29,17 +28,8 @@ def main(page: ft.Page) -> None:
     page.window.min_width = 520
     page.window.min_height = 560
 
-    # Background and content are layered; the content view is always the last child.
-    background = build_background()
-    content = HomeView(settings)
-    for layer in (background, content):
-        layer.left = layer.top = layer.right = layer.bottom = 0  # stretch each layer over the window
-    page.add(ft.Stack([background, content], expand=True))
+    Shell(page, settings).show_home()
 
 
-def run(web_port: int | None = None) -> None:
-    """Start the desktop app (or a browser preview when ``web_port`` is given)."""
-    if web_port:
-        ft.run(main, assets_dir=str(ASSETS_DIR), view=None, port=web_port)
-    else:
-        ft.run(main, assets_dir=str(ASSETS_DIR))
+def run() -> None:
+    ft.run(main, assets_dir=str(ASSETS_DIR))
