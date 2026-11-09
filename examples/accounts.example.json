@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "accounts": [
+    {
+      "id": "3f9c2a1b7d",
+      "handle": "your_handle",
+      "display_name": "Your Name",
+      "adspower_id": "k1a2b3c",
+      "avatar_file": "your_handle.jpg"
+    }
+  ]
+}
