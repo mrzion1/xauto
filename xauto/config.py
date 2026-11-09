@@ -53,6 +53,11 @@ class Settings:
     adspower_api_key: str = ""
     # Card turns yellow when the queue runs out within this many days.
     refill_warning_days: int = 2
+    # Your own bot from @BotFather; the chat id is filled by `python -m xauto telegram-setup`.
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
+    # Stop looking for a published post after this long and send the profile link instead.
+    notify_give_up_hours: int = 3
 
     @classmethod
     def load(cls) -> "Settings":

@@ -84,14 +84,18 @@ class AdsPowerClient:
             return None
         return self._session_from(data)
 
-    def start_profile(self, profile_id: str) -> BrowserSession:
+    def start_profile(self, profile_id: str, headless: bool = False) -> BrowserSession:
         """Open the profile (or reuse it if it is already open)."""
         session = self.active_session(profile_id)
         if session:
             return session
         # open_tabs=1 -> do not restore the AdsPower start page / previous tabs.
-        data = self._get("/api/v1/browser/start", user_id=profile_id, open_tabs="1")
+        data = self._get("/api/v1/browser/start", user_id=profile_id, open_tabs="1",
+                         headless="1" if headless else "0")
         return self._session_from(data)
+
+    def stop_profile(self, profile_id: str) -> None:
+        self._get("/api/v1/browser/stop", user_id=profile_id)
 
     def open_url(self, profile_id: str, url: str) -> None:
         """Open ``url`` in a new tab of the given profile and bring that tab to front."""
