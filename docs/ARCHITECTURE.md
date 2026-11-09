@@ -7,6 +7,7 @@ xauto/
 ├── cli.py               add-post / list / move / shift / schedule / set-status / remove
 ├── scheduling.py        use case: approved posts -> X scheduler, saves every outcome
 ├── notify.py            use case: live post -> link -> your Telegram bot
+├── remote.py            use case: Telegram commands -> Claude terminal / screenshot
 ├── app.py               window setup
 ├── config.py            paths + Settings (config/settings.json)
 ├── models.py            Account, Post and their enums
@@ -17,7 +18,9 @@ xauto/
 │   ├── media.py         attachment types, ffmpeg thumbnails, durations
 │   ├── x_scheduler.py   Playwright over CDP: compose, upload, schedule + request guard
 │   ├── x_timeline.py    finds a published post's URL on the profile page
-│   ├── telegram_bot.py  Bot API: send message, discover your chat id
+│   ├── telegram_bot.py  Bot API: messages, photos, long polling, chat id
+│   ├── claude_session.py open / close the launcher's console window by PID
+│   ├── screen.py        screenshot of all monitors as JPEG
 │   └── x_profile.py     public profile lookup (name, avatar)
 └── ui/
     ├── shell.py         root Stack + navigation between screens
@@ -33,7 +36,9 @@ xauto/
     └── formatting.py    dates, durations, plural-safe helpers
 scripts/
 ├── build_icon.py        renders assets/icon.png + icon.ico with Pillow
-└── check_secrets.py     pre-commit / CI scan for private data
+├── check_secrets.py     pre-commit / CI scan for private data
+├── notify_task.pyw      scheduled `notify` run (no console)
+└── remote_task.pyw      Telegram watcher started at logon (no console)
 ```
 
 ## Principles

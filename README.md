@@ -47,6 +47,7 @@ Everything runs locally. No accounts, cookies or proxies leave your machine.
 | ✅ | CLI to add posts safely: `python -m xauto add-post ...` |
 | ✅ | Push approved posts into X's native scheduler through AdsPower, with a request guard that checks time, text and media before X accepts anything |
 | ✅ | Telegram bot message with the link as soon as a scheduled post goes live |
+| ✅ | Remote control from the same bot: open / restart / close a Claude Code terminal, take a screenshot |
 
 ## Requirements
 
@@ -95,6 +96,9 @@ On first launch `config/settings.example.json` is copied to
 | `adspower_api_url` | Local API address shown in AdsPower's API settings. |
 | `adspower_api_key` | Only if API key verification is turned on in AdsPower. |
 | `refill_warning_days` | A card turns yellow when its queue ends within this many days. |
+| `telegram_bot_token`, `telegram_chat_id` | Your bot; filled by `telegram-setup`. |
+| `notify_give_up_hours` | Stop looking for a post after this long and send the profile link. |
+| `claude_launcher` | `.bat` opened by the bot's `/claude` command (empty = off). |
 
 ## Post queue
 
@@ -144,6 +148,31 @@ After a scheduled post's time passes, `notify` reads the account's profile
 inside its AdsPower profile (started headless and closed again if it was not
 open), finds the post by its text and sends you the link. If the PC was off,
 the link arrives on the next run, marked as late. Log: `data/notify.log`.
+
+## Telegram: remote control
+
+A small watcher starts at every Windows logon (Startup folder, no admin rights,
+no console window) and obeys commands from your own chat only. Everyone else
+gets no reply at all.
+
+| Command | Action |
+|---------|--------|
+| `/claude` | open the terminal from `claude_launcher` |
+| `/restart` | close it and open it again |
+| `/stop` | close it (the whole process tree) |
+| `/status` | is it running? |
+| `/screen` | screenshot of all monitors |
+
+```bash
+python -m xauto install-remote --start-now   # remove with: python -m xauto uninstall-remote
+```
+
+Set `claude_launcher` in `config/settings.json` to a `.bat` that starts
+Claude Code with the [Telegram channel](https://code.claude.com/docs/en/channels)
+on a **second** bot (Telegram lets only one program read a bot's messages).
+Commands older than 10 minutes are dropped, so nothing fires hours later when
+the PC comes back on. While the watcher runs, `telegram-setup` can't read the
+bot (it needs the same updates): stop the watcher first. Log: `data/remote.log`.
 
 ## Privacy
 
