@@ -50,3 +50,13 @@ def test_same_post_ignores_line_breaks_and_truncation():
 def test_same_post_rejects_other_text():
     assert not same_post("Mike Tyson made $400 million", "Barbara Corcoran borrowed $1,000")
     assert not same_post("", "anything")
+
+
+def test_match_posts_keeps_own_posts_only():
+    from xauto.services.x_timeline import match_posts
+    items = [
+        {"text": "Mike Tyson made around $400 million", "href": "/someone/status/1"},
+        {"text": "Mike Tyson made around\n$400 million", "href": "/WorkMadz/status/2"},
+    ]
+    found = match_posts(items, "workmadz", {"a": "Mike Tyson made around $400 million in his career"})
+    assert found == {"a": "https://x.com/WorkMadz/status/2"}

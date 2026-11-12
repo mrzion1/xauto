@@ -8,7 +8,6 @@ PC was off at posting time, the link is sent on the next run, marked as late.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -111,7 +110,7 @@ def _lookup_urls(account: Account, settings: Settings, posts: list[Post]) -> dic
         return {}  # try again on the next run; give-up timer still applies
 
     try:
-        return asyncio.run(find_post_urls(session.debug_port, account.handle, {p.id: p.text for p in posts}))
+        return find_post_urls(session.debug_port, account.handle, {p.id: p.text for p in posts})
     except Exception as exc:  # X slow / layout change: retry next run instead of crashing the task
         log.warning("could not read @%s profile: %s: %s", account.handle, type(exc).__name__, exc)
         return {}
