@@ -47,6 +47,7 @@ Everything runs locally. No accounts, cookies or proxies leave your machine.
 | ✅ | CLI to add posts safely: `python -m xauto add-post ...` |
 | ✅ | Push approved posts into X's native scheduler through AdsPower, with a request guard that checks time, text and media before X accepts anything |
 | ✅ | Telegram bot message with the link as soon as a scheduled post goes live |
+| ✅ | One-hour stats (views, likes, replies, reposts) in Telegram and in the app |
 | ✅ | Remote control from the same bot: open / restart / close a Claude Code terminal, take a screenshot |
 
 ## Requirements
@@ -120,8 +121,12 @@ python -m xauto schedule --account your_handle             # live
 
 or press **Schedule on X** on the account's posts screen.
 
-The bot opens the account's AdsPower profile, types the post, uploads the
-media and fills X's schedule dialog. The browser's own clock converts the
+Everything runs in the background. If the account's AdsPower profile is
+closed, Xauto starts it headless (no window, no focus stealing), types the
+post, uploads the media, fills X's schedule dialog and closes the profile
+again. If the profile is already open it is used as it is; when Playwright
+cannot attach to it (seen with wallet extensions), you are asked to close the
+window and schedule again. The browser's own clock converts the
 time, so the profile's time zone (set by its proxy) never shifts a post.
 Right before X receives the request, Xauto intercepts `CreateScheduledTweet`
 and compares the UTC send time, the exact text and the attachment count with
@@ -154,10 +159,21 @@ If the post is still missing after the last one, you get the profile link to
 check by hand. If the PC was off, Windows runs the missed check at startup and
 the link is marked as late. Log: `data/notify.log`.
 
+An hour after each post the same bot gets one short table: views, likes,
+replies, reposts and bookmarks (numbers from the public FxTwitter API, no
+browser). The snapshot is kept in the queue, so the app shows it on published
+posts: views in the list, all counters under the post in the preview. If the
+PC was off at that hour, the snapshot is taken at startup and labelled with
+its real age. For posts published before this existed:
+
+```bash
+python -m xauto stats      # fill the snapshot once, no Telegram message
+```
+
 ## Telegram: remote control
 
 Remote control uses a **second** bot, so the post-links bot only ever carries
-post links. The same bot is shared with Claude Code's
+post links and their one-hour stats. The same bot is shared with Claude Code's
 [Telegram channel](https://code.claude.com/docs/en/channels), and Telegram lets
 only one program read a bot at a time, so it is handed back and forth:
 

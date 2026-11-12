@@ -37,9 +37,14 @@ class TelegramBot:
             raise TelegramError(body.get("description") or f"Telegram error (HTTP {response.status_code})")
         return body["result"]
 
-    def send(self, chat_id: str | int, text: str) -> None:
-        # Link previews stay on: Telegram shows the X card, handy before forwarding.
-        self._call("sendMessage", chat_id=chat_id, text=text)
+    def send(self, chat_id: str | int, text: str, html: bool = False, preview: bool = True) -> None:
+        # Link previews stay on by default: Telegram shows the X card, handy before forwarding.
+        params: dict = {"chat_id": chat_id, "text": text}
+        if html:
+            params["parse_mode"] = "HTML"
+        if not preview:
+            params["link_preview_options"] = {"is_disabled": True}
+        self._call("sendMessage", **params)
 
     def send_photo(self, chat_id: str | int, image: bytes, caption: str = "", filename: str = "screen.jpg") -> None:
         self._call("sendPhoto", files={"photo": (filename, image)}, chat_id=chat_id, caption=caption, http_timeout=60)

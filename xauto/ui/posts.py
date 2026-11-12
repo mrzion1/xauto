@@ -13,10 +13,11 @@ from ..scheduling import pending_posts, schedule_account
 from ..i18n import plural, t
 from ..models import Account, Post, PostStatus
 from ..services.media import is_video, thumbnail_for
+from ..services.x_scheduler import ProfileBusyError
 from ..storage import QueueRepository
 from . import theme
 from .common import account_avatar, run_in_background, show_toast, watch_file
-from .formatting import clock, day_header
+from .formatting import clock, compact_number, day_header
 from .preview import PreviewDialog
 from .status import status_chip
 
@@ -45,6 +46,7 @@ class PostTile(ft.Container):
                         [
                             ft.Text(clock(post.scheduled_at), size=20, weight=ft.FontWeight.W_700, color=theme.TEXT),
                             status_chip(post.status),
+                            *self._views(post),
                         ],
                         spacing=8,
                         width=96,
@@ -67,6 +69,15 @@ class PostTile(ft.Container):
             on_click=lambda _: on_click(post),
             ink=False,
         )
+
+    @staticmethod
+    def _views(post: Post) -> list[ft.Control]:
+        """Views after the first hour, under the status of a published post."""
+        if not post.stats:
+            return []
+        return [ft.Row([ft.Icon(ft.Icons.BAR_CHART, size=14, color=theme.TEXT_MUTED),
+                        ft.Text(compact_number(post.stats.views), size=12, color=theme.TEXT_MUTED)],
+                       spacing=4, tight=True, tooltip=t("posts.views_tip"))]
 
     def load_thumbnail(self) -> None:
         """Called from a background thread: ffmpeg may need a moment for videos."""
@@ -262,6 +273,8 @@ class PostsView(ft.Container):
                 done = sum(r.ok for r in results)
                 show_toast(self.page, t("posts.schedule.done", done=done, total=len(results)),
                            error=done != len(results))
+            except ProfileBusyError:
+                show_toast(self.page, t("posts.schedule.profile_busy"), error=True)
             except Exception as exc:  # AdsPower down, browser closed mid-way, ...
                 show_toast(self.page, f"{type(exc).__name__}: {exc}", error=True)
             finally:

@@ -63,7 +63,7 @@ def test_match_posts_keeps_own_posts_only():
 
 
 def test_check_times_only_after_waiting_posts():
-    from xauto.notify import ATTEMPTS, check_times
+    from xauto.notify import ATTEMPTS, STATS_AFTER, STATS_RETRY, check_times
 
     waiting = _post(-60)                                              # in an hour
     sent = _post(-120, status=PostStatus.PUBLISHED, telegram=TelegramStatus.SENT)
@@ -72,7 +72,10 @@ def test_check_times_only_after_waiting_posts():
 
     times = check_times([waiting, sent, draft, just_posted], NOW)
 
-    expected = [just_posted.scheduled_at + d for d in ATTEMPTS[1:]] + [waiting.scheduled_at + d for d in ATTEMPTS]
+    snapshots = (STATS_AFTER, STATS_RETRY)
+    expected = ([just_posted.scheduled_at + d for d in (*ATTEMPTS[1:], *snapshots)]
+                + [waiting.scheduled_at + d for d in (*ATTEMPTS, *snapshots)]
+                + [sent.scheduled_at + d for d in snapshots])
     assert times == sorted(expected)
 
 
@@ -84,3 +87,35 @@ def test_task_xml_has_one_trigger_per_time():
     assert xml.count("<TimeTrigger>") == 1
     assert "<StartWhenAvailable>true</StartWhenAvailable>" in xml
     assert "&quot;" not in xml.split("<Arguments>")[0]
+
+
+def test_stats_due_and_message():
+    from xauto.models import PostStats
+    from xauto.notify import build_stats_message, stats_due_posts
+
+    url = "https://x.com/demo/status/1"
+    young = _post(30, status=PostStatus.PUBLISHED, tweet_url=url)
+    ripe = _post(60, status=PostStatus.PUBLISHED, tweet_url=url)
+    assert stats_due_posts([young, ripe], NOW) == [ripe]
+
+    ripe.stats = PostStats(views=12345, likes=7, replies=0, reposts=2, bookmarks=1, collected_at=NOW)
+    msg = build_stats_message(ripe)
+    assert msg.startswith("Статистика за 1 ч · @demo")
+    assert "12 345" in msg and "<pre>" in msg and msg.endswith(url)
+    assert stats_due_posts([ripe], NOW) == []
+
+
+def test_late_stats_show_real_age():
+    from xauto.models import PostStats
+    from xauto.notify import stats_age
+
+    post = _post(300, status=PostStatus.PUBLISHED)
+    assert stats_age(post, PostStats(1, 0, 0, 0, 0, collected_at=NOW)) == "5 ч"
+
+
+def test_stats_roundtrip_in_queue_json():
+    from xauto.models import PostStats
+
+    post = _post(60, stats=PostStats(5, 1, 0, 0, 1, collected_at=NOW))
+    assert Post.from_dict(post.to_dict()).stats == post.stats
+    assert "stats" not in _post(1).to_dict()

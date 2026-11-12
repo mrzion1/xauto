@@ -226,6 +226,35 @@ def _rearm_quietly() -> None:
         logging.exception("could not update the notify task")
 
 
+def cmd_stats(args: argparse.Namespace) -> int:
+    """Store the engagement snapshot for published posts older than an hour, without Telegram.
+
+    For posts published before stats existed: their snapshot is "now", and the
+    app labels it with its real age instead of "1 h".
+    """
+    from datetime import datetime, timezone
+
+    from .notify import stats_age, stats_due_posts
+    from .services.x_stats import StatsError, fetch_stats
+
+    repo = QueueRepository()
+    now = datetime.now(timezone.utc)
+    due = stats_due_posts(repo.load(), now)
+    if not due:
+        print("nothing to fill: every published post older than an hour has stats")
+    for post in due:
+        try:
+            post.stats = fetch_stats(post.tweet_url, now)
+        except StatsError as exc:
+            print(f"  {post.id}  no stats: {exc}")
+            continue
+        repo.upsert(post)
+        st = post.stats
+        print(f"  {post.id}  за {stats_age(post, st)}: {st.views} views, {st.likes} likes, "
+              f"{st.replies} replies, {st.reposts} reposts")
+    return 0
+
+
 def cmd_telegram_setup(args: argparse.Namespace) -> int:
     from .config import Settings
     from .services.telegram_bot import TelegramBot, TelegramError
@@ -437,6 +466,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     notify = sub.add_parser("notify", help="send links of posts that went live to your Telegram bot")
     notify.set_defaults(handler=cmd_notify)
+
+    stats = sub.add_parser("stats", help="store current stats of published posts older than an hour (no Telegram)")
+    stats.set_defaults(handler=cmd_stats)
 
     tg = sub.add_parser("telegram-setup", help="connect your Telegram bot (token from @BotFather)")
     tg.add_argument("--token", help="bot token; saved to config/settings.json (git-ignored)")

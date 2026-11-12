@@ -53,6 +53,17 @@ def duration(seconds: float) -> str:
     return f"{seconds // 60}:{seconds % 60:02d}"
 
 
+def compact_number(value: int) -> str:
+    """X-style counter: 950, 1.2K, 34K, 1.5M."""
+    if value < 1000:
+        return str(value)
+    for limit, suffix in ((1_000_000, "M"), (1000, "K")):
+        if value >= limit * 0.9995:  # 999,999 reads as 1M, not 1000K
+            short = value / limit
+            return (f"{short:.1f}".rstrip("0").rstrip(".") if short < 10 else f"{short:.0f}") + suffix
+    return str(value)
+
+
 def tweet_length(text: str) -> int:
     """Approximate X length: every URL counts as 23 characters."""
     without_urls = _URL_RE.sub("x" * 23, text)

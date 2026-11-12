@@ -14,7 +14,7 @@ from typing import Callable
 
 from .config import Settings, post_dir
 from .models import Account, PostStatus
-from .services.adspower import AdsPowerClient
+from .services.adspower import AdsPowerClient, AdsPowerError
 from .services.x_scheduler import ScheduleResult, XScheduler
 from .storage import QueueRepository
 
@@ -44,7 +44,11 @@ def schedule_account(
     if not posts:
         return []
 
-    session = AdsPowerClient(settings.adspower_api_url, settings.adspower_api_key).start_profile(account.adspower_id)
+    # Background work: a closed profile is started headless (no window, no focus
+    # stealing) and closed again; an open one is used as it is.
+    adspower = AdsPowerClient(settings.adspower_api_url, settings.adspower_api_key)
+    was_open = adspower.active_session(account.adspower_id) is not None
+    session = adspower.start_profile(account.adspower_id, headless=not was_open)
     jobs = [(p, [post_dir(p.id) / name for name in p.media], post_dir(p.id)) for p in posts]
 
     def record(result: ScheduleResult) -> None:
@@ -64,7 +68,14 @@ def schedule_account(
             on_result(result)
 
     scheduler = XScheduler(session.debug_port, dry_run=dry_run)
-    results = asyncio.run(scheduler.schedule_many(jobs, on_result=record))
+    try:
+        results = asyncio.run(scheduler.schedule_many(jobs, on_result=record))
+    finally:
+        if not was_open:
+            try:
+                adspower.stop_profile(account.adspower_id)
+            except AdsPowerError:
+                log.warning("could not stop the headless profile of @%s", account.handle)
     if not dry_run and any(r.ok for r in results):
         _rearm_notify()
     return results

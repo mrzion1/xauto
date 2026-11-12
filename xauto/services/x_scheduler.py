@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from playwright.async_api import Page, Request, Route, async_playwright
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from ..models import Post
 
@@ -34,6 +35,7 @@ COMPOSE_URL = "https://x.com/compose/post"
 SCHEDULE_ENDPOINT = "**/CreateScheduledTweet*"
 
 UPLOAD_TIMEOUT_MS = 5 * 60_000      # long videos take a while to process
+CONNECT_TIMEOUT_MS = 45_000
 STEP_TIMEOUT_MS = 30_000
 TIME_TOLERANCE_S = 60               # X schedules with minute precision
 
@@ -46,6 +48,10 @@ class Selectors:
     CONFIRM = '[data-testid="scheduledConfirmationPrimaryAction"]'
     SUBMIT = '[role="dialog"] [data-testid="tweetButton"]'
     ATTACHMENTS = '[role="dialog"] [data-testid="attachments"]'
+
+
+class ProfileBusyError(RuntimeError):
+    pass
 
 
 class SchedulerError(RuntimeError):
@@ -212,7 +218,14 @@ class XScheduler:
         """
         results: list[ScheduleResult] = []
         async with async_playwright() as pw:
-            browser = await pw.chromium.connect_over_cdp(f"http://127.0.0.1:{self.debug_port}")
+            try:
+                browser = await pw.chromium.connect_over_cdp(f"http://127.0.0.1:{self.debug_port}",
+                                                             timeout=CONNECT_TIMEOUT_MS)
+            except PlaywrightTimeoutError as exc:
+                # Seen on a profile the user keeps open with wallet extensions: Playwright
+                # never finishes attaching. A profile Xauto starts itself is fine.
+                raise ProfileBusyError("the AdsPower profile is open and does not answer; "
+                                       "close its window and schedule again") from exc
             context = browser.contexts[0]
             try:
                 for index, (post, media, folder) in enumerate(posts):

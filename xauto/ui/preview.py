@@ -13,7 +13,8 @@ from ..models import Account, Post, PostStatus, TelegramStatus
 from ..services.media import is_video, open_in_system, thumbnail_for, video_duration
 from . import theme
 from .common import account_avatar, show_toast
-from .formatting import duration, short_date, tweet_length
+from ..notify import stats_hours
+from .formatting import compact_number, duration, short_date, tweet_length
 from .status import status_chip
 
 # X dark mode palette, used only inside the mock so it reads as "a real post".
@@ -63,11 +64,13 @@ class PreviewDialog(ft.AlertDialog):
             wrap=True,
         )
         body = ft.Text(self.post.text, color=X_TEXT, size=15, selectable=True)
+        stats = self.post.stats
+        counts = (stats.replies, stats.reposts, stats.likes, stats.views, stats.bookmarks) if stats else (None,) * 5
         engagement = ft.Row(
-            [ft.Icon(icon, size=18, color=X_MUTED) for icon in (
+            [self._counter(icon, value) for icon, value in zip((
                 ft.Icons.CHAT_BUBBLE_OUTLINE, ft.Icons.REPEAT, ft.Icons.FAVORITE_BORDER,
                 ft.Icons.BAR_CHART, ft.Icons.BOOKMARK_BORDER,
-            )],
+            ), counts)],
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
         )
 
@@ -91,6 +94,14 @@ class PreviewDialog(ft.AlertDialog):
                 spacing=12,
             ),
         )
+
+    @staticmethod
+    def _counter(icon: str, value: int | None) -> ft.Control:
+        """X-style action icon, with the number next to it once stats were collected."""
+        parts: list[ft.Control] = [ft.Icon(icon, size=18, color=X_MUTED)]
+        if value is not None:
+            parts.append(ft.Text(compact_number(value), size=13, color=X_MUTED))
+        return ft.Row(parts, spacing=4, tight=True)
 
     def _media(self, files: list[Path]) -> ft.Control:
         tiles = [self._media_tile(f, single=len(files) == 1) for f in files]
@@ -156,6 +167,10 @@ class PreviewDialog(ft.AlertDialog):
         if self.post.tweet_url:
             items.append(ft.TextButton(t("preview.open_on_x"), icon=ft.Icons.OPEN_IN_NEW_ROUNDED,
                                        url=self.post.tweet_url, style=ft.ButtonStyle(color=theme.OK)))
+        if self.post.stats:
+            hours = stats_hours(self.post, self.post.stats)
+            age = t("preview.age_h", n=hours) if hours < 48 else t("preview.age_d", n=round(hours / 24))
+            items.append(ft.Text(t("preview.stats", age=age), size=13, color=theme.TEXT_MUTED))
         if self.post.telegram is not TelegramStatus.OFF and self.post.status in (PostStatus.SCHEDULED, PostStatus.PUBLISHED):
             items.append(ft.Text(t(f"preview.tg.{self.post.telegram.value}"), size=13, color=theme.TEXT_MUTED))
         if self.post.error:

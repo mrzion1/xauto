@@ -89,6 +89,30 @@ class TelegramStatus(str, Enum):
 
 
 @dataclass
+class PostStats:
+    """Engagement of a published post, read once about an hour after it went out."""
+
+    views: int
+    likes: int
+    replies: int
+    reposts: int
+    bookmarks: int
+    collected_at: datetime          # timezone-aware
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"views": self.views, "likes": self.likes, "replies": self.replies, "reposts": self.reposts,
+                "bookmarks": self.bookmarks, "collected_at": self.collected_at.isoformat(timespec="minutes")}
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> "PostStats":
+        return cls(
+            views=int(raw.get("views", 0)), likes=int(raw.get("likes", 0)), replies=int(raw.get("replies", 0)),
+            reposts=int(raw.get("reposts", 0)), bookmarks=int(raw.get("bookmarks", 0)),
+            collected_at=datetime.fromisoformat(raw["collected_at"]),
+        )
+
+
+@dataclass
 class Post:
     """A single queued post. See docs/QUEUE_FORMAT.md for the JSON schema."""
 
@@ -101,6 +125,7 @@ class Post:
     tweet_url: str = ""
     scheduled_id: str = ""          # id of the entry in X's scheduler, once scheduled
     error: str = ""
+    stats: PostStats | None = None  # one snapshot ~1 h after posting, see notify.py
     id: str = field(default_factory=new_id)
 
     def to_dict(self) -> dict[str, Any]:
@@ -115,6 +140,7 @@ class Post:
             "tweet_url": self.tweet_url,
             "scheduled_id": self.scheduled_id,
             "error": self.error,
+            **({"stats": self.stats.to_dict()} if self.stats else {}),
         }
 
     @classmethod
@@ -134,4 +160,5 @@ class Post:
             tweet_url=raw.get("tweet_url", ""),
             scheduled_id=raw.get("scheduled_id", ""),
             error=raw.get("error", ""),
+            stats=PostStats.from_dict(raw["stats"]) if raw.get("stats") else None,
         )
