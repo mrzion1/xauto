@@ -8,6 +8,7 @@ right away, so a crash halfway never loses what was already scheduled.
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime, timezone
 from typing import Callable
 
@@ -16,6 +17,8 @@ from .models import Account, PostStatus
 from .services.adspower import AdsPowerClient
 from .services.x_scheduler import ScheduleResult, XScheduler
 from .storage import QueueRepository
+
+log = logging.getLogger(__name__)
 
 
 def pending_posts(handle: str, repo: QueueRepository | None = None, post_ids: set[str] | None = None):
@@ -61,4 +64,17 @@ def schedule_account(
             on_result(result)
 
     scheduler = XScheduler(session.debug_port, dry_run=dry_run)
-    return asyncio.run(scheduler.schedule_many(jobs, on_result=record))
+    results = asyncio.run(scheduler.schedule_many(jobs, on_result=record))
+    if not dry_run and any(r.ok for r in results):
+        _rearm_notify()
+    return results
+
+
+def _rearm_notify() -> None:
+    """New posts in X's scheduler need their link checks in Windows' scheduler."""
+    from .notify import rearm_task
+
+    try:
+        rearm_task()
+    except Exception:  # scheduling itself succeeded, so only log it
+        log.exception("could not update the notify task")

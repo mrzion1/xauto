@@ -1,19 +1,23 @@
 """Use case: when a scheduled post goes live, send its link to your Telegram bot.
 
-Meant to run every few minutes (Windows Task Scheduler, see ``install-task``).
-It is cheap when there is nothing to do: the browser is only touched when a
-scheduled post's time has passed and its link has not been sent yet. If the
-PC was off at posting time, the link is sent on the next run, marked as late.
+It does not poll: the Windows task "Xauto notify" only has one-shot triggers
+right after each scheduled post (see ``ATTEMPTS``), and ``rearm_task`` rebuilds
+them whenever posts are scheduled or a check has run. If the PC was off at
+posting time, Windows runs the missed check at startup and the link is marked
+as late.
 """
 
 from __future__ import annotations
 
 import logging
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from .config import Settings
 from .models import Account, Post, PostStatus, TelegramStatus
+from .services import win_task
 from .services.adspower import AdsPowerClient, AdsPowerError
 from .services.telegram_bot import TelegramBot
 from .services.x_timeline import find_post_urls
@@ -21,8 +25,13 @@ from .storage import AccountRepository, QueueRepository
 
 log = logging.getLogger(__name__)
 
-# X needs a moment to publish and show the post on the profile.
-PUBLISH_GRACE = timedelta(minutes=2)
+# Checks after posting time: the first finds almost every post, the other two
+# cover X publishing late. After the last one we stop and send the profile link.
+ATTEMPTS = (timedelta(minutes=1), timedelta(minutes=5), timedelta(minutes=15))
+# A trigger may fire a few seconds early; never look before this.
+PUBLISH_GRACE = timedelta(seconds=45)
+GIVE_UP_AFTER = ATTEMPTS[-1] - timedelta(minutes=1)
+TASK_NAME = "Xauto notify"
 # A link sent this long after posting time gets a "late" note.
 LATE_AFTER = timedelta(minutes=30)
 
@@ -88,7 +97,7 @@ def run_notify(settings: Settings, now: datetime | None = None) -> NotifyReport:
                 bot.send(settings.telegram_chat_id, build_message(fresh, url, now))
                 fresh.status, fresh.tweet_url, fresh.telegram = PostStatus.PUBLISHED, url, TelegramStatus.SENT
                 report.sent += 1
-            elif now - fresh.scheduled_at > timedelta(hours=settings.notify_give_up_hours):
+            elif now - fresh.scheduled_at >= GIVE_UP_AFTER:
                 bot.send(settings.telegram_chat_id, build_give_up_message(fresh))
                 fresh.telegram = TelegramStatus.MISSED
                 report.gave_up += 1
@@ -120,3 +129,25 @@ def _lookup_urls(account: Account, settings: Settings, posts: list[Post]) -> dic
                 adspower.stop_profile(account.adspower_id)  # leave things as we found them
             except AdsPowerError:
                 pass
+
+
+def check_times(posts: list[Post], now: datetime) -> list[datetime]:
+    """Future moments when a check is needed: ATTEMPTS after each post still waiting for its link."""
+    waiting = [p for p in posts
+               if p.status in (PostStatus.SCHEDULED, PostStatus.PUBLISHED) and p.telegram is TelegramStatus.PENDING]
+    return sorted({p.scheduled_at + delay for p in waiting for delay in ATTEMPTS if p.scheduled_at + delay > now})
+
+
+def rearm_task(now: datetime | None = None) -> list[datetime]:
+    """Point the Windows task at the upcoming checks only; remove it when nothing is pending."""
+    from .config import ROOT_DIR
+
+    times = check_times(QueueRepository().load(), now or datetime.now(timezone.utc))
+    if not times:
+        win_task.remove(TASK_NAME)
+        return []
+    pythonw = Path(sys.executable).with_name("pythonw.exe")
+    runner = ROOT_DIR / "scripts" / "notify_task.pyw"
+    win_task.install(TASK_NAME, win_task.build_xml(
+        times, str(pythonw), f'"{runner}"', "Xauto: send links of scheduled posts that went live"))
+    return times

@@ -58,8 +58,6 @@ class Settings:
     # Your own bot from @BotFather; the chat id is filled by `python -m xauto telegram-setup`.
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
-    # Stop looking for a published post after this long and send the profile link instead.
-    notify_give_up_hours: int = 3
     # Remote control uses its OWN bot (shared with Claude Code's Telegram channel),
     # so the post-links bot above only ever carries post links.
     remote_bot_token: str = ""

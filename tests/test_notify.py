@@ -17,8 +17,8 @@ def _post(minutes_ago: int, **kw) -> Post:
 
 
 def test_due_posts_waits_for_grace_period():
-    assert due_posts([_post(1)], NOW) == []
-    assert len(due_posts([_post(5)], NOW)) == 1
+    assert due_posts([_post(0)], NOW) == []
+    assert len(due_posts([_post(1)], NOW)) == 1
 
 
 def test_due_posts_skips_sent_off_and_unscheduled():
@@ -60,3 +60,27 @@ def test_match_posts_keeps_own_posts_only():
     ]
     found = match_posts(items, "workmadz", {"a": "Mike Tyson made around $400 million in his career"})
     assert found == {"a": "https://x.com/WorkMadz/status/2"}
+
+
+def test_check_times_only_after_waiting_posts():
+    from xauto.notify import ATTEMPTS, check_times
+
+    waiting = _post(-60)                                              # in an hour
+    sent = _post(-120, status=PostStatus.PUBLISHED, telegram=TelegramStatus.SENT)
+    draft = _post(-180, status=PostStatus.DRAFT)
+    just_posted = _post(3)                                            # 3 minutes ago: +1 min check is over
+
+    times = check_times([waiting, sent, draft, just_posted], NOW)
+
+    expected = [just_posted.scheduled_at + d for d in ATTEMPTS[1:]] + [waiting.scheduled_at + d for d in ATTEMPTS]
+    assert times == sorted(expected)
+
+
+def test_task_xml_has_one_trigger_per_time():
+    from datetime import datetime, timezone
+    from xauto.services.win_task import build_xml
+
+    xml = build_xml([datetime(2026, 11, 13, 16, 45, tzinfo=timezone.utc)], r"C:\py\pythonw.exe", '"D:/x/run.pyw"')
+    assert xml.count("<TimeTrigger>") == 1
+    assert "<StartWhenAvailable>true</StartWhenAvailable>" in xml
+    assert "&quot;" not in xml.split("<Arguments>")[0]

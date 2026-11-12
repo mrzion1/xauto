@@ -5,7 +5,6 @@
   "refill_warning_days": 2,
   "telegram_bot_token": "",
   "telegram_chat_id": "",
-  "notify_give_up_hours": 3,
   "remote_bot_token": "",
   "remote_chat_id": "",
   "claude_launcher": ""

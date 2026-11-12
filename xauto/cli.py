@@ -211,7 +211,19 @@ def cmd_notify(args: argparse.Namespace) -> int:
         return 1
     if report.sent or report.waiting or report.gave_up:
         logging.info("sent=%d waiting=%d gave_up=%d", report.sent, report.waiting, report.gave_up)
+    _rearm_quietly()
     return 0
+
+
+def _rearm_quietly() -> None:
+    """Re-point the notify task at the upcoming posts; a failure must not break the caller."""
+    from .notify import rearm_task
+
+    try:
+        times = rearm_task()
+        logging.info("next checks: %s", ", ".join(t.astimezone().strftime("%d.%m %H:%M") for t in times) or "none")
+    except Exception:
+        logging.exception("could not update the notify task")
 
 
 def cmd_telegram_setup(args: argparse.Namespace) -> int:
@@ -237,29 +249,28 @@ def cmd_telegram_setup(args: argparse.Namespace) -> int:
     return 0
 
 
-TASK_NAME = "Xauto notify"
-
-
 def cmd_install_task(args: argparse.Namespace) -> int:
-    """Register a Windows scheduled task that runs `notify` every N minutes, without a console window."""
-    from .config import ROOT_DIR
+    """(Re)create the notify task with one-shot triggers right after each scheduled post."""
+    from .notify import rearm_task
+    from .services.win_task import TaskError
 
-    pythonw = Path(sys.executable).with_name("pythonw.exe")
-    runner = ROOT_DIR / "scripts" / "notify_task.pyw"
-    action = f'"{pythonw}" "{runner}"'
-    result = subprocess.run(
-        ["schtasks", "/Create", "/F", "/SC", "MINUTE", "/MO", str(args.every), "/TN", TASK_NAME, "/TR", action],
-        capture_output=True, text=True,
-    )
-    if result.returncode != 0:
-        raise CliError(f"schtasks failed: {result.stderr.strip() or result.stdout.strip()}")
-    print(f"task '{TASK_NAME}' installed: every {args.every} min -> {action}")
+    try:
+        times = rearm_task()
+    except TaskError as exc:
+        raise CliError(f"schtasks failed: {exc}") from exc
+    if not times:
+        print("no scheduled posts are waiting for a link: task removed")
+    for t in times:
+        print(f"  check at {t.astimezone():%d.%m %H:%M}")
     return 0
 
 
 def cmd_uninstall_task(args: argparse.Namespace) -> int:
-    result = subprocess.run(["schtasks", "/Delete", "/F", "/TN", TASK_NAME], capture_output=True, text=True)
-    print(result.stdout.strip() or result.stderr.strip())
+    from .notify import TASK_NAME
+    from .services import win_task
+
+    win_task.remove(TASK_NAME)
+    print(f"task '{TASK_NAME}' removed")
     return 0
 
 
@@ -431,8 +442,7 @@ def build_parser() -> argparse.ArgumentParser:
     tg.add_argument("--token", help="bot token; saved to config/settings.json (git-ignored)")
     tg.set_defaults(handler=cmd_telegram_setup)
 
-    task = sub.add_parser("install-task", help="run `notify` automatically via Windows Task Scheduler")
-    task.add_argument("--every", type=int, default=10, help="minutes between runs (default 10)")
+    task = sub.add_parser("install-task", help="arm the Windows task that checks right after each scheduled post")
     task.set_defaults(handler=cmd_install_task)
 
     untask = sub.add_parser("uninstall-task", help="remove the scheduled task")

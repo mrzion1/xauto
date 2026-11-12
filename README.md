@@ -97,7 +97,6 @@ On first launch `config/settings.example.json` is copied to
 | `adspower_api_key` | Only if API key verification is turned on in AdsPower. |
 | `refill_warning_days` | A card turns yellow when its queue ends within this many days. |
 | `telegram_bot_token`, `telegram_chat_id` | Your bot; filled by `telegram-setup`. |
-| `notify_give_up_hours` | Stop looking for a post after this long and send the profile link. |
 | `remote_bot_token`, `remote_chat_id` | The remote-control bot (separate from the post-links bot). |
 | `claude_launcher` | `.bat` opened by the bot's `/claude` command (empty = off). |
 
@@ -140,15 +139,20 @@ download is needed because it attaches to AdsPower's browser.
    ```bash
    python -m xauto telegram-setup --token <your bot token>
    ```
-3. Let Windows check every 10 minutes (no console window pops up):
+3. Arm the Windows task (no console window pops up):
    ```bash
    python -m xauto install-task          # remove with: python -m xauto uninstall-task
    ```
 
-After a scheduled post's time passes, `notify` reads the account's profile
-inside its AdsPower profile (started headless and closed again if it was not
-open), finds the post by its text and sends you the link. If the PC was off,
-the link arrives on the next run, marked as late. Log: `data/notify.log`.
+Nothing polls. The task "Xauto notify" only has one-shot triggers 1, 5 and 15
+minutes after each scheduled post, and it is rebuilt automatically after
+`schedule` and after every check. Each check reads the account's profile over
+raw CDP in a background tab (the AdsPower profile is started headless and
+closed again if it was not open), finds the post by its text and sends you the
+link, usually within ten seconds. Checks after the link was sent do nothing.
+If the post is still missing after the last one, you get the profile link to
+check by hand. If the PC was off, Windows runs the missed check at startup and
+the link is marked as late. Log: `data/notify.log`.
 
 ## Telegram: remote control
 
