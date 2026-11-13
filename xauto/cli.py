@@ -209,8 +209,8 @@ def cmd_notify(args: argparse.Namespace) -> int:
     except Exception:
         logging.exception("notify failed")
         return 1
-    if report.sent or report.waiting or report.gave_up:
-        logging.info("sent=%d waiting=%d gave_up=%d", report.sent, report.waiting, report.gave_up)
+    if report.sent or report.waiting or report.gave_up or report.stats:
+        logging.info("sent=%d waiting=%d gave_up=%d stats=%d", report.sent, report.waiting, report.gave_up, report.stats)
     _rearm_quietly()
     return 0
 
